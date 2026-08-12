@@ -1,0 +1,14 @@
+{
+  "name": "release-gate",
+  "description": "Marketplace del plugin release-gate: compuerta de calidad determinista para código escrito por agentes (perfiles medida y landing, trinquete, baseline data-driven).",
+  "owner": {
+    "name": "Innsolutions"
+  },
+  "plugins": [
+    {
+      "name": "release-gate",
+      "source": "./",
+      "description": "Release Gate: capa 1 determinista que bloquea (Pint, PHPStan con trinquete, gitleaks, audits, innerHTML, links). Datos del proyecto en .gate/baseline.json; scripts vendoreados idénticos entre repos."
+    }
+  ]
+}

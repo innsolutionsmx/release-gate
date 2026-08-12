@@ -121,18 +121,11 @@ Job de referencia para `.github/workflows/ci.yml` (junto al job de tests):
 
       - name: Install gitleaks
         run: |
-          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz | tar -xz gitleaks
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar -xz gitleaks
           sudo mv gitleaks /usr/local/bin/
 
       - name: Install PHP dependencies
-        run: composer install --no-interaction --prefer-dist --no-progress --optimize-autoloader
-
-      - name: Prepare Laravel
-        run: |
-          cp .env.testing .env
-          mkdir -p storage/framework/{sessions,views,cache} storage/logs
-          chmod -R 777 storage bootstrap/cache
-          php artisan key:generate --force
+        run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Release Gate
         run: ./scripts/gate-check.sh
@@ -140,11 +133,14 @@ Job de referencia para `.github/workflows/ci.yml` (junto al job de tests):
 
 Notas:
 
-- gitleaks pinneado (v8.21.2); subir la versión es un cambio consciente, no un `latest`.
+- gitleaks pinneado (v8.24.3, la versión que corre en los 7 repos de la casa);
+  subir la versión es un cambio consciente, no un `latest`.
 - `npm audit` corre desde `package-lock.json` — no hace falta `npm ci`.
-- El paso "Prepare Laravel" existe porque `gate-links.php` bootea `artisan
-  route:list` (landing) y por la falla histórica de `/storage` entero en
-  `.gitignore` (checkout limpio sin `storage/framework` → `artisan` muere).
+- No hace falta preparar `.env` ni `storage/`: `artisan route:list` (que usa
+  `gate-links.php` en landing) bootea sin ellos — probado por 7 CI verdes de la
+  familia. Si un repo lo llegara a necesitar (p. ej. `/storage` entero en
+  `.gitignore`, la falla histórica de pos-llantera), la señal es `route:list`
+  muriendo en CI: ahí se agrega un paso de preparación como el del job de tests.
 - El job de tests existente no se toca: el gate es un job aparte, en paralelo.
 
 ## Gotchas vigentes (aprendidos en producción)

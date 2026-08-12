@@ -1,7 +1,7 @@
 {
   "name": "release-gate",
   "description": "Release Gate: compuerta de calidad determinista para código escrito por agentes. Capa 1 que bloquea (Pint, PHPStan con trinquete, gitleaks, audits, innerHTML, links), datos del proyecto en .gate/baseline.json, scripts vendoreados idénticos entre repos.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Innsolutions",
     "email": "innsolutions23@gmail.com"

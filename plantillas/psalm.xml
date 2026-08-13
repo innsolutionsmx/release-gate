@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<!--
+  Release Gate, capa 1 — Psalm en modo TAINT-ONLY.
+  Acá NO se usa Psalm como analizador general (eso ya lo cubre PHPStan n8
+  con trinquete): el gate lo corre exclusivamente con \-\-taint-analysis
+  para seguir flujo de datos contaminados (input de usuario -> sink).
+  Baseline de taint: psalm-taint-baseline.xml (trinquete, no regenerar).
+-->
+<psalm
+    errorLevel="1"
+    resolveFromConfigFile="true"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://getpsalm.org/schema/config"
+    xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+>
+    <projectFiles>
+        <directory name="app"/>
+        <directory name="routes"/>
+        <directory name="database/seeders"/>
+        <ignoreFiles>
+            <directory name="vendor"/>
+        </ignoreFiles>
+    </projectFiles>
+    <plugins>
+        <pluginClass class="Psalm\LaravelPlugin\Plugin"/>
+    </plugins>
+</psalm>

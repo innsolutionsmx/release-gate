@@ -30,10 +30,27 @@ tabla de estado. Diagnosticás primero; no arregles nada sin preguntar.
    - el script del repo fue editado a mano → eso es deuda contra el principio
      rector (datos al baseline, no al script). Explicá qué dato habría que mover
      al baseline y proponé el camino.
+3b. **Plantillas y reglas** (según perfil): `psalm.xml` (ambos); `phpmd.xml`,
+   `deptrac.yaml`, `deptrac.baseline.yaml` y `phpstan/Rules/*.php` (medida). En
+   medida verificá además que `phpstan.neon.dist` registre las dos reglas en
+   `services:` y que `composer.json` tenga `"Gate\\PHPStan\\": "phpstan/"` en
+   `autoload-dev.psr-4` — sin eso las reglas no cargan y el gate pasa por
+   omisión, que es el peor de los mundos. Las reglas (`phpstan-rules/*.php`)
+   también se comparan por checksum contra el plugin: son motor, no config.
+
 4. **Herramientas**: `vendor/bin/pint` existe; `vendor/bin/phpstan` +
-   `phpstan-baseline.neon` (solo medida); `gitleaks`, `composer`, `npm` en PATH;
-   Chrome para lighthouse (`CHROME_PATH` o el default macOS) — este último es ⚠️,
-   no ❌: solo bloquea el post-deploy.
+   `phpstan-baseline.neon` (solo medida); `vendor/bin/psalm` (ambos);
+   `vendor/bin/phpmd` y `vendor/bin/deptrac` (medida); `gitleaks`, `composer`,
+   `npm` en PATH; Chrome para lighthouse (`CHROME_PATH` o el default macOS) —
+   este último es ⚠️, no ❌: solo bloquea el post-deploy.
+   Chequeá que PHPMD sea ≥ 2.15: una 2.5.x significa que se instaló sin
+   `--with-all-dependencies` y arrastra un pdepend viejo.
+
+4b. **Perfil bien asignado**: si el perfil es `landing` pero el repo tiene
+   `app/Models/` con modelos propios, migraciones de dominio o controllers de
+   admin más allá de los del base, marcá ⚠️: el perfil se decide por el código,
+   no por cómo se ve el sitio, y un repo así se está quedando sin análisis
+   estático. No lo cambies solo — es decisión del usuario.
 5. **CI corre el gate**: `.github/workflows/ci.yml` tiene un job que ejecuta
    `scripts/gate-check.sh`, su checkout usa `fetch-depth: 0` e instala gitleaks.
    Si el gate solo corre local, ⚠️ con el riesgo explícito: un push apurado lo

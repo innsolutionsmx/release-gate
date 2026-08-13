@@ -9,8 +9,10 @@ termina en `.gate/baseline.json`; los scripts son idénticos entre proyectos.
 ## 0. Guardas
 
 - Tiene que ser un repo git con Laravel (`artisan` en la raíz). Si no, frená y explicá.
-- Si ya existe `.gate/baseline.json`: el gate ya está instalado. Ofrecé
-  `/release-gate:doctor` (drift/salud) o `/release-gate:ratchet` (apretar) y frená.
+- Si ya existe `.gate/baseline.json`: el gate ya está instalado. Si le faltan
+  herramientas de la versión actual del plugin, eso es `/release-gate:upgrade`;
+  si no, ofrecé `/release-gate:doctor` (drift/salud) o `/release-gate:ratchet`
+  (apretar). En cualquier caso frená acá.
 - Flujo git de la casa: NO trabajes sobre `main`/`dev`. Creá la rama
   `chore/release-gate` desde `dev` actualizado antes de tocar nada.
 
@@ -19,13 +21,20 @@ termina en `.gate/baseline.json`; los scripts son idénticos entre proyectos.
 Relevá el repo (stack, dominio, superficie) y proponé un perfil:
 
 - **medida** — sistema con dominio: hay `app/Actions/`, roles/permisos, admin,
-  operaciones que mueven datos. El riesgo está en la lógica → PHPStan n8 con trinquete.
+  operaciones que mueven datos. El riesgo está en la lógica → PHPStan n8 con
+  trinquete, reglas propias, Psalm taint, PHPMD y Deptrac.
 - **landing** — sitio de presentación: pocas rutas, sin dominio real. El riesgo
   está en la superficie (secretos, deps, XSS por innerHTML, links muertos, headers,
-  performance) → sin PHPStan ni mutación.
+  performance) → Psalm taint por los formularios públicos, sin PHPStan ni mutación.
 
 **SIEMPRE confirmá el perfil con el usuario antes de seguir** (AskUserQuestion con
 tu recomendación primera). La heurística propone; el humano dispone.
+
+⚠️ El perfil se decide por el CÓDIGO, no por cómo se ve el sitio. Un sitio que por
+fuera es una landing pero adentro tiene panel administrable, modelos y migraciones
+propias es **medida**: lo que justifica el perfil landing son sus checks extra
+(innerHTML, links), no que le falte análisis. Ante la duda, contá archivos en
+`app/` y mirá `app/Models/`: si hay dominio, es medida.
 
 ## 2. Vendorear scripts
 
@@ -40,6 +49,16 @@ Desde `${CLAUDE_PLUGIN_ROOT}/scripts/` copiá al repo (creando `scripts/` si fal
 `chmod +x` a los `.sh`. NO los edites: si un check no aplica, el dato va al
 baseline, no al script. Un script editado a mano es drift y `/release-gate:doctor`
 lo va a delatar.
+
+## 2b. Herramientas y plantillas
+
+Instalá las dependencias de dev del perfil y copiá las plantillas. Los comandos
+exactos, qué archivo va a dónde y el gotcha del `--with-all-dependencies` de
+PHPMD están en `${CLAUDE_PLUGIN_ROOT}/plantillas/README.md`.
+
+En **medida** hay un paso que toca el `composer.json` del proyecto: las reglas
+propias necesitan `"Gate\\PHPStan\\": "phpstan/"` en `autoload-dev.psr-4` y un
+`composer dump-autoload`. Mostrale el diff al usuario; no lo hagas en silencio.
 
 ## 3. Medir y congelar `.gate/baseline.json` (schema 1)
 
@@ -68,6 +87,10 @@ Creá `.gate/` y medí la realidad, check por check:
    estático/constantes propias, sin input de usuario? Armá la lista PROPUESTA de
    permitidos con tu veredicto por archivo y **pedí confirmación humana explícita
    antes de escribirla**. Anotá en `inner_html.nota` qué se revisó y cuándo.
+6b. **Psalm taint** (ambos perfiles), **PHPMD**, **Deptrac** y **reglas propias**
+   (solo medida): medí y congelá cada uno como indica el paso 5 de
+   `/release-gate:upgrade` — mismo procedimiento, mismos comandos, mismo criterio
+   (un taint real es un bug de seguridad: mostralo antes de congelarlo).
 7. Escribí el baseline con `schema: 1`, `perfil`, `congelado` (fecha de hoy),
    `plugin` (versión leída de `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`)
    y las secciones del perfil. Schema completo con ejemplo por perfil:

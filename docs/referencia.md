@@ -9,6 +9,7 @@
 | `/release-gate:ratchet` | Aprieta el trinquete donde la realidad mejoró; nunca afloja |
 | `/release-gate:deploy-check` | Post-deploy: headers + Lighthouse contra el sitio vivo; la primera corrida congela los mínimos |
 | `/release-gate:doctor` | Salud de la instalación: baseline, drift por checksum contra el plugin, herramientas, CI |
+| `/release-gate:upgrade` | Sube un repo YA gateado a la versión actual del plugin: instala lo que falte, vendorea, mide y congela los baselines nuevos |
 
 ## Checks por perfil
 
@@ -17,8 +18,14 @@
 | Check | Bloquea por | Dato en baseline |
 |---|---|---|
 | Pint `--test` | formato sucio | `pint.estado` |
-| PHPStan nivel 8 + baseline | errores nuevos sobre el baseline | `phpstan.*` |
+| PHPStan nivel 8 + baseline (incluye las reglas propias) | errores nuevos sobre el baseline | `phpstan.*`, `reglas_gate.*` |
 | Trinquete PHPStan | más entradas que las congeladas | `phpstan.entradas_baseline` |
+| Psalm `--taint-analysis` | flujo input de usuario → sink peligroso | `psalm.entradas_baseline` |
+| Trinquete taint | más entradas que las congeladas | ídem |
+| PHPMD (set curado) | complejidad, código muerto, restos de debugging | `phpmd.entradas_baseline`, `phpmd.paths` |
+| Trinquete PHPMD | más entradas que las congeladas | ídem |
+| Deptrac | dependencia entre capas no permitida | `deptrac.entradas_baseline` |
+| Trinquete Deptrac | más entradas que las congeladas | ídem |
 | gitleaks (historial completo) | secretos nuevos | `secretos.*` (`.gitleaksignore` = riesgos aceptados) |
 | composer audit | advisories ≥ `bloquea_desde` | `composer.bloquea_desde` |
 | npm audit | superar el trinquete | `npm.trinquete` |
@@ -28,8 +35,37 @@ composer audit, npm audit (mismos datos), más:
 
 | Check | Bloquea por | Dato en baseline |
 |---|---|---|
+| Psalm `--taint-analysis` | flujo input de usuario → sink peligroso | `psalm.entradas_baseline` |
+| Trinquete taint | más entradas que las congeladas | ídem |
 | innerHTML / v-html | archivos fuera de la lista permitida | `inner_html.permitidos` |
 | `gate-links.php` | `route('x')` en vistas que no existe en el router | — |
+
+> **Por qué taint también en landing**: es el único análisis estático que corre
+> ahí, y es standalone (no necesita PHPStan). Una landing tiene formularios
+> públicos de contacto: la superficie de input más expuesta de todas.
+
+> **El perfil se decide por el código, no por el frontend.** Un sitio que por
+> fuera parece landing pero adentro tiene modelos propios, migraciones de dominio
+> y panel administrable es **medida**. Lo que justifica el perfil landing son sus
+> checks extra (innerHTML, links), no que le falte análisis.
+
+## Herramientas por perfil
+
+| Herramienta | medida | landing |
+|---|---|---|
+| Pint, gitleaks, composer, npm | sí | sí |
+| PHPStan n8 + larastan | sí | no |
+| Reglas propias (`phpstan/Rules/`) | sí | no (necesitan PHPStan) |
+| Psalm + `psalm/plugin-laravel` | sí | sí |
+| PHPMD ≥ 2.15 | sí | no |
+| Deptrac | sí | no |
+
+Instalación, plantillas y gotchas: `plantillas/README.md` del plugin.
+
+⚠️ **PHPMD se instala con `--with-all-dependencies`**. Sin el flag, composer
+resuelve `phpmd/phpmd` a la 2.5.0 (2016) porque `pdepend/pdepend` queda clavado
+viejo, y esa combinación tira deprecations en PHP 8.4. Si `doctor` reporta PHPMD
+2.5.x, se instaló mal.
 
 **post-deploy** (ambos perfiles, necesitan URL viva): `gate-headers.sh <url>`
 (5 headers obligatorios, 2 prohibidos) y `gate-lighthouse.sh <url>` (ninguna
@@ -51,7 +87,25 @@ Perfil **medida**:
         "nivel": 8,
         "errores_baseline": 995,
         "entradas_baseline": 904,
+        "nota_entradas": "por qué el número es el que es (útil cuando lo movió una regla nueva y no código nuevo)",
         "medicion_inicial_por_nivel": { "0": 4, "8": 999 }
+    },
+    "reglas_gate": {
+        "descripcion": "Reglas propias en phpstan/Rules/: prohíben queries y escrituras de Eloquent en Controllers",
+        "congelado": "2026-08-13",
+        "ocurrencias_congeladas": 0
+    },
+    "psalm": { "modo": "taint-only", "congelado": "2026-08-13", "entradas_baseline": 0 },
+    "phpmd": {
+        "reglas": "curado: unusedcode + codesize + design selecto",
+        "congelado": "2026-08-13",
+        "entradas_baseline": 0,
+        "paths": "app,routes,database/seeders"
+    },
+    "deptrac": {
+        "modo": "pragmático: Controller→Model permitido (bindings); queries en Actions",
+        "congelado": "2026-08-13",
+        "entradas_baseline": 0
     },
     "pint": { "estado": "limpio" },
     "secretos": { "estado": "limpio", "riesgos_aceptados": ".gitleaksignore" },
@@ -60,7 +114,8 @@ Perfil **medida**:
 }
 ```
 
-Perfil **landing** (sin `phpstan`, con `inner_html`, `headers` y `lighthouse`):
+Perfil **landing** (sin `phpstan` ni sus reglas, sin PHPMD ni Deptrac; con
+`psalm`, `inner_html`, `headers` y `lighthouse`):
 
 ```json
 {
@@ -68,6 +123,7 @@ Perfil **landing** (sin `phpstan`, con `inner_html`, `headers` y `lighthouse`):
     "congelado": "2026-08-10",
     "perfil": "landing",
     "plugin": "0.1.0",
+    "psalm": { "modo": "taint-only", "congelado": "2026-08-13", "entradas_baseline": 0 },
     "pint": { "estado": "limpio" },
     "secretos": { "estado": "limpio", "riesgos_aceptados": ".gitleaksignore" },
     "composer": { "bloquea_desde": "high", "abiertas": {} },
@@ -98,6 +154,24 @@ Notas del schema:
   por nivel al momento de instalar. Cara de medir; solo si se pide.
 - El trinquete se aprieta con `/release-gate:ratchet`; aflojarlo no tiene comando,
   a propósito. Toda excepción es decisión humana y queda anotada en el baseline.
+- **Las secciones nuevas (`psalm`, `phpmd`, `deptrac`, `reglas_gate`) son extensión
+  compatible: el schema sigue en 1.** Los checks leen sus claves con fallback a 0,
+  así que un baseline viejo que no las tenga no rompe nada. Un repo sin la
+  herramienta instalada sí falla el check correspondiente: por eso el upgrade
+  instala y congela en el mismo paso.
+- `phpmd.paths` es opcional; sin él se usa `app,routes,database/seeders`.
+- **Fix de la 0.2.0 que afecta a todos los perfiles**: hasta la 0.1.1, cuando un
+  check fallaba el script MORÍA ahí mismo. La línea de diagnóstico
+  (`herramienta ... | tail -N`) devuelve non-zero y con `set -euo pipefail` mata
+  el script antes de correr los checks siguientes y antes de imprimir
+  `✗ GATE BLOQUEADO`. El exit code seguía siendo 1 —por eso la CI se ponía roja
+  igual y el bug pasó desapercibido—, pero solo se veía la PRIMERA falla. Ahora
+  esas líneas llevan `|| true`: el gate reporta TODAS las fallas de una pasada.
+  Un repo que siga en 0.1.x arrastra el comportamiento viejo hasta re-vendorear.
+- Un baseline **ausente** (no hay `psalm-taint-baseline.xml`, `phpmd.baseline.xml`)
+  cuenta como cero congelados. Es lo correcto: si no hay nada que perdonar, no hay
+  archivo. La excepción es `deptrac.baseline.yaml`, que `deptrac.yaml` importa
+  siempre y debe existir aunque sea con `skip_violations: {}`.
 
 ## CI — job `gate`
 

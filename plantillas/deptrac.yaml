@@ -1,0 +1,52 @@
+# Release Gate, capa 1 — Deptrac: la arquitectura de ai/context/arquitectura.md
+# como regla ejecutable.
+#
+# Modo PRAGMÁTICO: Controller→Model está permitido. ¿Por qué, si la arquitectura
+# dice que el Controller delega en Actions? Porque Deptrac mira IMPORTS y no
+# distingue el route model binding (destroy(User $user), idiomático en Laravel)
+# de correr una query en el controller, que es la erosión real. En modo estricto
+# bloqueaba todo controller nuevo con binding, sin salida legal.
+# Lo que Deptrac no puede ver lo cubren las reglas propias de PHPStan
+# (phpstan/Rules/), que miran LLAMADAS: ahí sí, una query en un Controller falla.
+#
+# Violaciones congeladas: deptrac.baseline.yaml (lo genera /release-gate:upgrade
+# o :init; si no hay violaciones queda con `skip_violations: {}`).
+#
+# Capas y flechas permitidas:
+#   Controller → FormRequest, Action, Model (binding; las queries van en Actions)
+#   FormRequest → Model
+#   Action     → Model
+#   Model      → (nada de arriba)
+imports:
+  - deptrac.baseline.yaml
+
+deptrac:
+  paths:
+    - app
+  layers:
+    - name: Controller
+      collectors:
+        - type: directory
+          value: app/Http/Controllers/.*
+    - name: FormRequest
+      collectors:
+        - type: directory
+          value: app/Http/Requests/.*
+    - name: Action
+      collectors:
+        - type: directory
+          value: app/Actions/.*
+    - name: Model
+      collectors:
+        - type: directory
+          value: app/Models/.*
+  ruleset:
+    Controller:
+      - FormRequest
+      - Action
+      - Model
+    FormRequest:
+      - Model
+    Action:
+      - Model
+    Model: []

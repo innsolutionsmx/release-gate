@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!--
+  Release Gate, capa 1 — PHPMD con set CURADO (perfil medida).
+  Deliberadamente FUERA: cleancode entero (StaticAccess es inútil con los
+  facades de Laravel; ElseExpression y BooleanArgumentFlag son opinión, no
+  defecto) y naming (la categoría con más falsos positivos).
+  Baseline: phpmd.baseline.xml (trinquete, no regenerar).
+-->
+<ruleset name="release-gate-medida"
+         xmlns="http://pmd.sf.net/ruleset/1.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sf.net/ruleset/1.0.0 http://pmd.sf.net/ruleset_xml_schema.xsd"
+         xsi:noNamespaceSchemaLocation="http://pmd.sf.net/ruleset_xml_schema.xsd">
+    <description>Set curado del Release Gate: código muerto + complejidad + diseño selecto.</description>
+
+    <!-- Código muerto: el ruleset completo, señal pura -->
+    <rule ref="rulesets/unusedcode.xml"/>
+
+    <!-- Complejidad: ciclomática, NPath, longitudes, parámetros -->
+    <rule ref="rulesets/codesize.xml"/>
+
+    <!-- Diseño: selecto -->
+    <rule ref="rulesets/design.xml/ExitExpression"/>
+    <rule ref="rulesets/design.xml/EvalExpression"/>
+    <rule ref="rulesets/design.xml/GotoStatement"/>
+    <!-- Umbral 20 (default 13): el patrón Controller → FormRequest → Action de la
+         casa reparte la lógica en muchas clases chicas y un CRUD completo junta
+         13+ imports legítimos. A 20 sigue cazando god-classes sin castigar el patrón. -->
+    <rule ref="rulesets/design.xml/CouplingBetweenObjects">
+        <properties>
+            <property name="maximum" value="20"/>
+        </properties>
+    </rule>
+    <rule ref="rulesets/design.xml/EmptyCatchBlock"/>
+    <rule ref="rulesets/design.xml/CountInLoopExpression"/>
+    <!-- Restos de debugging que un agente deja olvidados: dd(), dump(), var_dump() -->
+    <rule ref="rulesets/design.xml/DevelopmentCodeFragment">
+        <properties>
+            <property name="unwanted-functions" value="var_dump,print_r,debug_zval_dump,debug_print_backtrace,dd,dump,ray"/>
+        </properties>
+    </rule>
+</ruleset>

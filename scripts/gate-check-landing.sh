@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Release Gate — capa 1 determinista, PERFIL LANDING.
-# Formato, secretos, dependencias, innerHTML, links. Sin PHPStan ni mutación:
-# en una landing la barra es superficie de ataque y performance, no dominio.
+# Formato, secretos, dependencias, taint, innerHTML, links. Sin PHPStan ni
+# mutación: en una landing la barra es superficie de ataque y performance.
+#
+# Psalm corre en modo taint-only (no necesita PHPStan): una landing tiene
+# formularios públicos, que son la superficie de input más expuesta de todas.
 #
 # Vendoreado por /release-gate:init como scripts/gate-check.sh — NO editar a mano:
 # el script es idéntico entre proyectos; TODO dato del proyecto vive en
@@ -25,12 +28,42 @@ else
     FAIL=1
 fi
 
+echo "── Gate: Psalm taint (input de usuario → sink) ───────"
+# Rastrea flujo contaminado input → sink (XSS, SQLi, shell, unserialize,
+# open redirect). Es el único análisis estático del perfil landing y es
+# standalone: no requiere PHPStan ni su baseline.
+PSALM_CONGELADOS=$(php -r 'echo json_decode(file_get_contents(".gate/baseline.json"))->psalm->entradas_baseline ?? 0;')
+PSALM_ARGS=(--taint-analysis --no-progress)
+if [ -f psalm-taint-baseline.xml ]; then
+    PSALM_ARGS+=(--use-baseline=psalm-taint-baseline.xml)
+fi
+if vendor/bin/psalm "${PSALM_ARGS[@]}" > /dev/null 2>&1; then
+    echo "OK: sin flujos contaminados nuevos"
+else
+    echo "FALLA: flujos contaminados nuevos (el baseline solo perdona los congelados):"
+    vendor/bin/psalm "${PSALM_ARGS[@]}" --output-format=compact 2>&1 | tail -30 || true
+    FAIL=1
+fi
+
+echo "── Gate: trinquete taint (el baseline no puede engordar) ─"
+PSALM_ACTUALES=0
+if [ -f psalm-taint-baseline.xml ]; then
+    PSALM_ACTUALES=$(grep -c '<code>' psalm-taint-baseline.xml || true)
+fi
+if [ "$PSALM_ACTUALES" -le "$PSALM_CONGELADOS" ]; then
+    echo "OK: baseline de taint con $PSALM_ACTUALES entradas (congelado: $PSALM_CONGELADOS)"
+else
+    echo "FALLA: el baseline de taint creció de $PSALM_CONGELADOS a $PSALM_ACTUALES entradas."
+    echo "Regenerar el baseline para perdonar flujos nuevos NO está permitido."
+    FAIL=1
+fi
+
 echo "── Gate: gitleaks (historial completo) ───────────────"
 if gitleaks git --no-banner --redact --exit-code 1 . > /dev/null 2>&1; then
     echo "OK: sin secretos (riesgos aceptados en .gitleaksignore)"
 else
     echo "FALLA: gitleaks encontró secretos nuevos:"
-    gitleaks git --no-banner --redact . 2>&1 | tail -20
+    gitleaks git --no-banner --redact . 2>&1 | tail -20 || true
     FAIL=1
 fi
 
@@ -54,7 +87,7 @@ if [ "$COMPOSER_ALTAS" -eq 0 ]; then
     echo "OK: sin advisories que bloqueen en composer"
 else
     echo "FALLA: $COMPOSER_ALTAS advisories bloqueantes:"
-    composer audit --locked 2>&1 | tail -20
+    composer audit --locked 2>&1 | tail -20 || true
     FAIL=1
 fi
 

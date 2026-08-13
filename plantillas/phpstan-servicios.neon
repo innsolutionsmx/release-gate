@@ -1,0 +1,19 @@
+# Bloque a agregar en el phpstan.neon.dist del proyecto, al mismo nivel que
+# `parameters:` (NO adentro). Registra las reglas propias del Release Gate.
+#
+# Requiere además, en el composer.json del proyecto:
+#   "autoload-dev": { "psr-4": { "Gate\\PHPStan\\": "phpstan/" } }
+# y correr `composer dump-autoload` después.
+
+# Reglas propias del Release Gate. Protegen la arquitectura donde Deptrac no
+# llega: Deptrac ve imports (y por eso confunde el route model binding con una
+# query), estas reglas ven LLAMADAS. Código en phpstan/Rules/.
+services:
+    -
+        class: Gate\PHPStan\Rules\NoModelStaticCallInControllerRule
+        tags:
+            - phpstan.rules.rule
+    -
+        class: Gate\PHPStan\Rules\NoModelPersistCallInControllerRule
+        tags:
+            - phpstan.rules.rule

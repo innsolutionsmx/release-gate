@@ -51,12 +51,24 @@ riesgo de drift que el vendoreo introduce lo cubre `doctor` con checksums.
 
 ## Dos perfiles, porque el riesgo no es el mismo
 
-- **medida**: sistemas con dominio (POS, admin). El riesgo está en la lógica →
-  PHPStan nivel 8 con trinquete además de la base común.
-- **landing**: sitios de presentación. El riesgo está en la superficie → innerHTML,
-  links, headers, Lighthouse; PHPStan ahí es burocracia, no seguridad.
+- **landing**: sitios de presentación. El riesgo está en la superficie → formato,
+  secretos, dependencias, taint por los formularios públicos, innerHTML, links,
+  headers y Lighthouse. PHPStan ahí es burocracia, no seguridad.
+- **medida**: sistemas con dominio (POS, admin). Tienen la misma superficie que
+  una landing **y además** lógica → todo lo anterior, más PHPStan nivel 8 con
+  trinquete, reglas propias, PHPMD y Deptrac.
 
-La base común de ambos: formato, secretos, dependencias.
+**medida ⊇ landing.** Desde la v0.3.0 el superconjunto es estricto: no existe un
+check que corra en landing y no en medida. Elegir medida nunca cuesta cobertura,
+así que la decisión se reduce a una pregunta: ¿el repo tiene dominio propio?
+
+Que esto no era así se pagó caro. Hasta la v0.2.0 medida no incluía innerHTML ni
+links, así que reclasificar un repo de landing a medida le hacía PERDER dos
+checks. Cinco repos de la casa se quedaron en landing por esa razón — aplicaciones
+con panel administrable y roles, corriendo sin una sola línea de análisis
+estático. La primera vez que se les corrió PHPStan apareció un 500 en producción
+que llevaba meses escondido. **Un perfil no es configuración: decide qué sos capaz
+de ver.**
 
 ## Historia
 

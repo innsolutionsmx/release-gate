@@ -29,16 +29,23 @@
 | gitleaks (historial completo) | secretos nuevos | `secretos.*` (`.gitleaksignore` = riesgos aceptados) |
 | composer audit | advisories ≥ `bloquea_desde` | `composer.bloquea_desde` |
 | npm audit | superar el trinquete | `npm.trinquete` |
-
-**landing** (sitios de presentación — `gate-check-landing.sh`): Pint, gitleaks,
-composer audit, npm audit (mismos datos), más:
-
-| Check | Bloquea por | Dato en baseline |
-|---|---|---|
-| Psalm `--taint-analysis` | flujo input de usuario → sink peligroso | `psalm.entradas_baseline` |
-| Trinquete taint | más entradas que las congeladas | ídem |
 | innerHTML / v-html | archivos fuera de la lista permitida | `inner_html.permitidos` |
-| `gate-links.php` | `route('x')` en vistas que no existe en el router | — |
+| `gate-links.php` | `route('x')` en vistas que no existe en el router | — (sin baseline) |
+
+**landing** (sitios de presentación — `gate-check-landing.sh`): **el mismo conjunto
+menos los cuatro análisis de lógica.** Corre Pint, Psalm taint + trinquete,
+gitleaks, composer audit, npm audit, innerHTML y links — 8 checks, con los mismos
+datos de baseline. No corre PHPStan (ni las reglas propias), PHPMD ni Deptrac.
+
+> **medida ⊇ landing.** Desde la v0.3.0 medida es superconjunto ESTRICTO: los dos
+> checks de superficie corren en los dos perfiles. Elegir medida nunca cuesta
+> cobertura, así que la decisión de perfil se reduce a una sola pregunta: **¿el
+> repo tiene dominio propio?**
+>
+> Hasta la v0.2.0 no era así, y el costo fue real: cinco repos de la casa se
+> quedaron en `landing` para no perder innerHTML y links, y por eso pasaron meses
+> sin análisis estático. La primera corrida de PHPStan sobre uno de ellos destapó
+> un 500 en producción escondido hacía meses.
 
 > **Por qué taint también en landing**: es el único análisis estático que corre
 > ahí, y es standalone (no necesita PHPStan). Una landing tiene formularios
@@ -46,8 +53,14 @@ composer audit, npm audit (mismos datos), más:
 
 > **El perfil se decide por el código, no por el frontend.** Un sitio que por
 > fuera parece landing pero adentro tiene modelos propios, migraciones de dominio
-> y panel administrable es **medida**. Lo que justifica el perfil landing son sus
-> checks extra (innerHTML, links), no que le falte análisis.
+> y panel administrable es **medida**. Ante la duda, medida: como es superconjunto,
+> el error hacia medida cuesta minutos de CI y el error hacia landing cuesta no
+> ver los bugs.
+
+> ⚠️ **El check de links no tiene baseline y no lo va a tener.** Los demás
+> congelan la realidad y exigen que no empeore; este no perdona nada. Un
+> `route('x')` que no existe no es deuda: es una vista que tira 500 el día que
+> alguien la abra. Se arregla, no se congela.
 
 ## Herramientas por perfil
 
@@ -110,12 +123,21 @@ Perfil **medida**:
     "pint": { "estado": "limpio" },
     "secretos": { "estado": "limpio", "riesgos_aceptados": ".gitleaksignore" },
     "composer": { "bloquea_desde": "high", "abiertas": {} },
-    "npm": { "trinquete": { "critical": 0, "high": 0 } }
+    "npm": { "trinquete": { "critical": 0, "high": 0 } },
+    "inner_html": {
+        "permitidos": ["resources/js/admin/theme-editor.js"],
+        "nota": "inyecta solo markup estático y constantes propias, sin input de usuario (revisado 2026-08-13)"
+    }
 }
 ```
 
-Perfil **landing** (sin `phpstan` ni sus reglas, sin PHPMD ni Deptrac; con
-`psalm`, `inner_html`, `headers` y `lighthouse`):
+⚠️ `inner_html` es obligatoria en medida **desde la v0.3.0**. Un baseline de
+medida escrito con un plugin anterior no la tiene: sin la clave el check corre con
+lista vacía y cualquier `innerHTML` bloquea. `/release-gate:upgrade` la agrega
+midiendo, nunca copiándola de otro repo.
+
+Perfil **landing** — las mismas claves menos `phpstan`, `reglas_gate`, `phpmd` y
+`deptrac`:
 
 ```json
 {
@@ -211,7 +233,7 @@ Notas:
   subir la versión es un cambio consciente, no un `latest`.
 - `npm audit` corre desde `package-lock.json` — no hace falta `npm ci`.
 - No hace falta preparar `.env` ni `storage/`: `artisan route:list` (que usa
-  `gate-links.php` en landing) bootea sin ellos — probado por 7 CI verdes de la
+  `gate-links.php`, en ambos perfiles) bootea sin ellos — probado por 7 CI verdes de la
   familia. Si un repo lo llegara a necesitar (p. ej. `/storage` entero en
   `.gitignore`, la falla histórica de pos-llantera), la señal es `route:list`
   muriendo en CI: ahí se agrega un paso de preparación como el del job de tests.

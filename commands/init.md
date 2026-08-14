@@ -20,21 +20,35 @@ termina en `.gate/baseline.json`; los scripts son idénticos entre proyectos.
 
 Relevá el repo (stack, dominio, superficie) y proponé un perfil:
 
-- **medida** — sistema con dominio: hay `app/Actions/`, roles/permisos, admin,
-  operaciones que mueven datos. El riesgo está en la lógica → PHPStan n8 con
-  trinquete, reglas propias, Psalm taint, PHPMD y Deptrac.
 - **landing** — sitio de presentación: pocas rutas, sin dominio real. El riesgo
   está en la superficie (secretos, deps, XSS por innerHTML, links muertos, headers,
-  performance) → Psalm taint por los formularios públicos, sin PHPStan ni mutación.
+  performance) → Psalm taint por los formularios públicos, innerHTML, links; sin
+  PHPStan ni mutación. **8 checks.**
+- **medida** — sistema con dominio: hay `app/Actions/`, roles/permisos, admin,
+  operaciones que mueven datos. Todo lo de landing **más** el análisis de la
+  lógica: PHPStan n8 con trinquete, reglas propias, PHPMD y Deptrac. **14 checks.**
+
+**medida es superconjunto ESTRICTO de landing.** Elegir medida nunca cuesta
+cobertura: un sistema con dominio no deja de tener vistas y JS por tener Actions.
+Por eso la pregunta no es "¿cuál de los dos?", es una sola: **¿este repo tiene
+dominio propio?** Si sí, medida. Si no, landing.
 
 **SIEMPRE confirmá el perfil con el usuario antes de seguir** (AskUserQuestion con
 tu recomendación primera). La heurística propone; el humano dispone.
 
 ⚠️ El perfil se decide por el CÓDIGO, no por cómo se ve el sitio. Un sitio que por
 fuera es una landing pero adentro tiene panel administrable, modelos y migraciones
-propias es **medida**: lo que justifica el perfil landing son sus checks extra
-(innerHTML, links), no que le falte análisis. Ante la duda, contá archivos en
-`app/` y mirá `app/Models/`: si hay dominio, es medida.
+propias es **medida**. Ante la duda, contá archivos en `app/` y mirá `app/Models/`:
+si hay dominio, es medida. Y ante la duda que no se despeja, **medida**: como es
+superconjunto, equivocarse hacia medida cuesta tiempo de CI; equivocarse hacia
+landing cuesta no ver los bugs.
+
+> Historia de por qué esto está escrito así: hasta la v0.2.0 medida NO incluía
+> innerHTML ni links, así que reclasificar un repo de landing a medida le hacía
+> PERDER dos checks. Cinco repos de la casa quedaron en landing por eso —
+> aplicaciones con panel administrable y roles corriendo sin una sola línea de
+> análisis estático. La primera vez que se les corrió PHPStan apareció un 500 en
+> producción que llevaba meses escondido. La v0.3.0 cerró el agujero.
 
 ## 2. Vendorear scripts
 
@@ -44,7 +58,7 @@ Desde `${CLAUDE_PLUGIN_ROOT}/scripts/` copiá al repo (creando `scripts/` si fal
 |---|---|---|
 | ambos | `gate-check-<perfil>.sh` | `scripts/gate-check.sh` |
 | ambos | `gate-headers.sh`, `gate-lighthouse.sh` | mismo nombre |
-| landing | `gate-links.php` | mismo nombre |
+| ambos | `gate-links.php` | mismo nombre |
 
 `chmod +x` a los `.sh`. NO los edites: si un check no aplica, el dato va al
 baseline, no al script. Un script editado a mano es drift y `/release-gate:doctor`
@@ -82,7 +96,7 @@ Creá `.gate/` y medí la realidad, check por check:
 5. **npm**: `npm audit`. El trinquete se congela en el estado REAL de hoy
    (ideal `{critical: 0, high: 0}`; si hay deuda, congelala y anotala — el
    trinquete impide que crezca).
-6. **innerHTML** (solo landing): buscá `innerHTML|v-html` en `resources/js` y
+6. **innerHTML** (ambos perfiles): buscá `innerHTML|v-html` en `resources/js` y
    `resources/views`. Por cada hit LEÉ el archivo y evaluá: ¿inyecta solo markup
    estático/constantes propias, sin input de usuario? Armá la lista PROPUESTA de
    permitidos con tu veredicto por archivo y **pedí confirmación humana explícita
@@ -91,6 +105,13 @@ Creá `.gate/` y medí la realidad, check por check:
    (solo medida): medí y congelá cada uno como indica el paso 5 de
    `/release-gate:upgrade` — mismo procedimiento, mismos comandos, mismo criterio
    (un taint real es un bug de seguridad: mostralo antes de congelarlo).
+6c. **links internos** (ambos perfiles): corré `php scripts/gate-links.php`.
+   ⚠️ **Este check NO tiene baseline**: no hay nada que congelar, o pasa o bloquea.
+   Si encuentra un `route('x')` que no existe, eso no es deuda técnica — es una
+   vista que revienta con 500 el día que alguien la abra. Se ARREGLA antes de
+   seguir. El caso más común es una vista huérfana de Breeze apuntando a una ruta
+   deshabilitada (típico: `register.blade.php` con el registro público comentado):
+   ahí lo correcto suele ser borrar la vista muerta, no resucitar la ruta.
 7. Escribí el baseline con `schema: 1`, `perfil`, `congelado` (fecha de hoy),
    `plugin` (versión leída de `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`)
    y las secciones del perfil. Schema completo con ejemplo por perfil:

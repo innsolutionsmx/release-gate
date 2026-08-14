@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # Release Gate — capa 1 determinista, PERFIL MEDIDA.
 # Pint + PHPStan n8 (con reglas propias) + Psalm taint + PHPMD + Deptrac +
-# gitleaks + audits. Todo con trinquete. Pasa o no pasa. Sin opiniones.
+# gitleaks + audits + innerHTML + links. Todo con trinquete. Pasa o no pasa.
+# Sin opiniones.
+#
+# medida es SUPERCONJUNTO ESTRICTO de landing: los checks de superficie
+# (innerHTML, links) también corren acá. Un sistema con dominio no deja de tener
+# vistas y JS por tener Actions — y el que además es público los necesita igual.
 #
 # Vendoreado por /release-gate:init como scripts/gate-check.sh — NO editar a mano:
 # el script es idéntico entre proyectos; TODO dato del proyecto vive en
@@ -173,6 +178,32 @@ NPM_CHECK=$( (npm audit --json 2>/dev/null || true) | php -r '
     }')
 echo "$NPM_CHECK"
 case "$NPM_CHECK" in FALLA*) FAIL=1;; esac
+
+echo "── Gate: innerHTML / v-html ──────────────────────────"
+# La lista de permitidos vive en .gate/baseline.json (inner_html.permitidos),
+# no acá: el script es idéntico entre proyectos, los datos son del proyecto.
+PERMITIDOS=$(php -r '
+    $p = json_decode(file_get_contents(".gate/baseline.json"), true)["inner_html"]["permitidos"] ?? [];
+    echo implode("|", array_map("preg_quote", $p));')
+if [ -n "$PERMITIDOS" ]; then
+    HITS=$(grep -rlnE 'innerHTML|v-html' resources/js resources/views 2>/dev/null | grep -vE "$PERMITIDOS" || true)
+else
+    HITS=$(grep -rlnE 'innerHTML|v-html' resources/js resources/views 2>/dev/null || true)
+fi
+if [ -z "$HITS" ]; then
+    echo "OK: sin innerHTML fuera de la lista permitida"
+else
+    echo "FALLA: innerHTML/v-html en archivos no permitidos:"
+    echo "$HITS"
+    FAIL=1
+fi
+
+echo "── Gate: links internos (route() vs router) ──────────"
+if php scripts/gate-links.php; then
+    :
+else
+    FAIL=1
+fi
 
 if [ "$FAIL" -ne 0 ]; then
     echo "✗ GATE BLOQUEADO"

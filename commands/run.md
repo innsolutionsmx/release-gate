@@ -27,6 +27,10 @@ Por cada `FALLA`, el fix es la CAUSA, nunca el umbral:
 | Pint | `vendor/bin/pint` | — |
 | PHPStan errores nuevos | arreglar el código nuevo | regenerar el baseline para perdonarlos |
 | Trinquete engordó | borrar los errores nuevos, no perdonarlos | subir `entradas_baseline` |
+| `gate.controllerQuery` / `gate.controllerPersist` | mover la query o la escritura del Controller a un Action | perdonarla en el baseline |
+| Psalm taint | cortar el flujo: escapar/validar en el borde, o dejar de pasar input de usuario a ese sink | congelarlo — **un taint nuevo es un bug de seguridad, no deuda** |
+| PHPMD | partir el método o la clase, borrar el código muerto, sacar el `dd()`/`dump()` que quedó | subir los umbrales de `phpmd.xml` |
+| Deptrac | respetar la capa: la query va en el Action, no en el Controller | agregar la violación a `skip_violations` |
 | gitleaks | rotar el secreto + limpiar; aceptar riesgo en `.gitleaksignore` es decisión del usuario | aceptarlo vos solo |
 | composer/npm audit | subir la dependencia afectada | aflojar `bloquea_desde` o el trinquete |
 | innerHTML | sanear el archivo o justificarlo ante el usuario para sumarlo a permitidos | agregarlo a `permitidos` sin revisión humana |

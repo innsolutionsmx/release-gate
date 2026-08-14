@@ -12,14 +12,17 @@ tabla de estado. Diagnosticás primero; no arregles nada sin preguntar.
    `${CLAUDE_PLUGIN_ROOT}/docs/referencia.md`). Registrá también `plugin`
    (versión con la que se vendoreó) si está.
 2. **Scripts presentes y ejecutables**: `scripts/gate-check.sh`,
-   `scripts/gate-headers.sh`, `scripts/gate-lighthouse.sh` (+ `scripts/gate-links.php`
-   si el perfil es landing), todos con permiso de ejecución.
+   `scripts/gate-headers.sh`, `scripts/gate-lighthouse.sh` y `scripts/gate-links.php`
+   — los cuatro en **ambos** perfiles desde la v0.3.0; los `.sh` con permiso de
+   ejecución. Si el perfil es `medida` y falta `gate-links.php`, el repo se
+   vendoreó con un plugin < 0.3.0: el gate nuevo lo va a exigir → mandá a
+   `/release-gate:upgrade`.
 3. **Drift contra el plugin** (el check estrella): compará checksums —
 
    ```bash
    shasum scripts/gate-check.sh "${CLAUDE_PLUGIN_ROOT}/scripts/gate-check-<perfil>.sh"
    shasum scripts/gate-headers.sh "${CLAUDE_PLUGIN_ROOT}/scripts/gate-headers.sh"
-   # ... ídem lighthouse y (landing) gate-links.php
+   # ... ídem lighthouse y gate-links.php (ambos perfiles)
    ```
 
    `<perfil>` sale del baseline. Checksums iguales = sin drift ✅. Distintos = ⚠️:
@@ -51,6 +54,10 @@ tabla de estado. Diagnosticás primero; no arregles nada sin preguntar.
    admin más allá de los del base, marcá ⚠️: el perfil se decide por el código,
    no por cómo se ve el sitio, y un repo así se está quedando sin análisis
    estático. No lo cambies solo — es decisión del usuario.
+   Desde la v0.3.0 medida es superconjunto estricto de landing, así que **pasar de
+   landing a medida no cuesta ningún check**: si el ⚠️ aplica, no hay contraparte
+   que sopesar. Traé números concretos (archivos en `app/`, cantidad de models,
+   controllers de admin, migraciones), no impresiones: el usuario decide con datos.
 5. **CI corre el gate**: `.github/workflows/ci.yml` tiene un job que ejecuta
    `scripts/gate-check.sh`, su checkout usa `fetch-depth: 0` e instala gitleaks.
    Si el gate solo corre local, ⚠️ con el riesgo explícito: un push apurado lo

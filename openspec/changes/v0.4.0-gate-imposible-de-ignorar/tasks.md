@@ -209,30 +209,87 @@
 
 ## Batch 5: Verificación manual end-to-end en repo testigo
 
+> **Verificación empírica sobre COPIAS (sesión 2026-08-14)** — batería completa corrida bajo
+> `/private/tmp/.../scratchpad/batch5/`, sin tocar ningún repo real. Resultados (de-riesga los
+> ítems 5.2–5.7/5.9 pero NO los cierra: esos exigen `/release-gate:upgrade` y `/release-gate:doctor`
+> reales sobre los 7 repos, fuera del alcance de este agente):
+> - **Regex del guard**: batería de 14+ casos contra `gate-push-guard.sh` (payload JSON de
+>   `PreToolUse` por stdin) — todos PASS contra el comportamiento documentado en el design,
+>   confirmando el hallazgo ya anotado en 2.7: `echo "git push origin dev"` y
+>   `git -c foo=bar push origin dev` NO se detectan (la tabla de falsos positivos/negativos del
+>   design dice que sí deberían). `git stash push` tampoco matchea (correcto, no es push remoto,
+>   caso no cubierto explícitamente por la tabla). Los 5 escenarios de `last-run.json` (verde,
+>   rojo/BLOQUEADO, commit distinto, árbol sucio, sin evidencia) deniegan con el motivo exacto
+>   documentado.
+> - **`gate-status.sh` contra baselines reales (copias)**: pos-llantera-jairo (medida, 903
+>   PHPStan) y base-project (medida, 88 PHPStan + psalm/phpmd/deptrac en 0) reproducen EXACTO
+>   el `entradas_baseline` congelado; landing-crb (landing, solo Psalm) también correcto.
+>   **Hallazgo**: `pos-llantera-jairo/.gate/baseline.json` (plugin 0.1.0, `congelado: 2026-08-10`)
+>   NO tiene las claves `psalm`/`phpmd`/`deptrac` — son anteriores a que existieran esos checks.
+>   `gate-status.sh` igual imprime las 4 filas del perfil medida con "Congelado 0" (vía `?? 0`)
+>   para las tres ausentes, indistinguible visualmente de un baseline realmente medido en 0. No
+>   es un bug del script (hace lo que el design pide), pero pos-llantera necesita pasar por
+>   `/release-gate:upgrade` + medición real antes de que esas filas signifiquen algo.
+>   "SE PUEDE APRETAR" se disparó correctamente al achicar artificialmente
+>   `phpstan-baseline.neon` (903→893). Guard mudo (sin `.gate/baseline.json`) confirmado en
+>   `gate-status.sh` y `gate-session-status.sh`: cero output, exit 0.
+> - **Timing**: `gate-status.sh` sobre la copia de pos-llantera, 5 corridas (Python
+>   `time.perf_counter`): min 230.5 ms, mediana 232.3 ms, max 233.5 ms — **por debajo del
+>   presupuesto de 300 ms pero con menos margen del esperado** (~70 ms libres; la mayor parte es
+>   overhead de arrancar `php -r` 3–4 veces + `git rev-parse` x2, no el `grep -c` sobre las 5419
+>   líneas del `.neon`). `gate-push-guard.sh` con stdin típico no-push: min 8.8 ms, mediana
+>   9.1 ms, max 13.0 ms — muy por debajo de los 100 ms.
+> - **Merge de `settings.json`**: algoritmo de 6 pasos de `commands/init.md` §2c implementado en
+>   Python (fiel al pseudocódigo) y corrido DOS VECES sobre copias de los `settings.json`
+>   **reales** (no fixtures sintéticos como en 3.9) de base-project, landing-crb y
+>   pos-llantera-jairo. JSON válido en las 3 salidas (`python3 -m json.tool`). Diff
+>   original→pasada 1: SOLO adiciones (`SessionStart`/`PreToolUse` nuevos) en los 3 casos.
+>   Diff pasada 1→pasada 2: vacío en los 3 (idempotencia confirmada por detección de subcadena).
+>   Confirmado a ojo: `git-guard.sh` intacto en base-project/pos-llantera (su matcher real es
+>   `Edit|Write|MultiEdit|NotebookEdit`, no `"Bash"` — por eso el hook nuevo crea una entrada
+>   `"Bash"` propia en vez de compartir array, tal como manda el paso 5 del algoritmo); los 2
+>   matchers de `PostToolUse` de pos-llantera (`detect-ui-change.js`, `briefing-detect.sh`)
+>   intactos; `enabledPlugins`/`extraKnownMarketplaces` de landing-crb intactos.
+> - `bash scripts/validate-manifest.sh` → pasa en 0.4.0 (`claude plugin validate --strict`).
+>
+> Ningún ítem de abajo se marca `[x]`: todos exigen `/release-gate:upgrade`/`/release-gate:doctor`
+> reales sobre los 7 repos o una sesión de Claude Code real (fuera del alcance de este agente,
+> per instrucción explícita de no tocar los repos reales). Quedan **PENDIENTE MANUAL**.
+
 - [ ] 5.1 Bump del plugin instalado: Rodrigo corre `/plugin` y reinicia Claude Code (fuera del
       alcance de este agente — anotado como paso manual del Rollout).
 - [ ] 5.2 Ejecutar `/release-gate:upgrade` en **base-project** (menor riesgo, hooks completos)
       y confirmar: las 5 piezas presentes, `settings.json` válido con hooks previos intactos,
       bloque `CLAUDE.md` instalado, `.gate/baseline.json` sin cambios salvo campo `plugin`.
-      — *design "Rollout"; gate-vendoring: "Ausencia de re-medición"*
+      — *design "Rollout"; gate-vendoring: "Ausencia de re-medición"*. Mecánica del merge
+      ya verificada sobre copia real (ver nota de batch arriba); falta la corrida real.
 - [ ] 5.3 SessionStart end-to-end en base-project: medir tiempo desde arranque de sesión hasta
-      tablero impreso (<2s). — *gate-status: "Presupuesto de tiempo" (SHOULD <2s end-to-end)*
-- [ ] 5.4 E2E push bloqueado: en rama `dev` de un repo de prueba sin `.gate/last-run.json`,
-      intentar `git push` vía Claude y confirmar que no pasa; correr `/release-gate:run`,
-      confirmar `last-run.json` verde y que el push subsiguiente sí pasa. — *gate-hooks: "Deny
-      — evidencia insuficiente", escenario "Sin evidencia previa"; design "Estrategia de
-      verificación" fila E2E*
+      tablero impreso (<2s). — *gate-status: "Presupuesto de tiempo" (SHOULD <2s end-to-end)*.
+      Timing de `gate-status.sh` solo (sin overhead de Claude Code) ya medido: ~232 ms mediana
+      sobre el caso pesado (ver nota de batch); falta medir el end-to-end real con Claude.
+- [ ] 5.4 **PENDIENTE MANUAL** — E2E push bloqueado: en rama `dev` de un repo de prueba sin
+      `.gate/last-run.json`, intentar `git push` vía Claude y confirmar que no pasa; correr
+      `/release-gate:run`, confirmar `last-run.json` verde y que el push subsiguiente sí pasa.
+      — *gate-hooks: "Deny — evidencia insuficiente", escenario "Sin evidencia previa"; design
+      "Estrategia de verificación" fila E2E*. La lógica de deny/allow del script ya se probó
+      exhaustivamente sin Claude (batería de la nota de arriba); lo que falta es específicamente
+      la interacción real vía Claude Code, que un agente no puede simular.
 - [ ] 5.5 Ejecutar `/release-gate:upgrade` en **pos-llantera** (`PostToolUse` con 2 matchers) y
       en **landing-crb**/**landing-urn** (sin clave `hooks`) y confirmar en cada uno los
       escenarios específicos de `gate-vendoring` para esos repos. — *gate-vendoring: escenarios
       "Upgrade preserva hooks de la casa (pos-llantera)" y "Upgrade en repo sin bloque hooks
-      (landing-crb, landing-urn)"*
+      (landing-crb, landing-urn)"*. Merge sobre copias reales de pos-llantera y landing-crb ya
+      verificado (ver nota de batch); landing-urn no tiene copia probada, falta la corrida real
+      de los 3.
 - [ ] 5.6 Ejecutar `/release-gate:upgrade` en **landing-cursos-urn** (hooks + plugins
       declarados) y confirmar que ambos bloques conviven sin pérdida. — *gate-vendoring:
-      escenario "Upgrade en repo con hooks + plugins declarados (landing-cursos-urn)"*
-- [ ] 5.7 Rodar `/release-gate:doctor` en cada repo tras su upgrade y confirmar cero hallazgos
-      sobre las piezas nuevas (checksum + presencia). — *gate-vendoring: "Custodia de doctor —
-      checksum" y "— presencia"; gate-doctrina: "Bloque presente y vigente"*
+      escenario "Upgrade en repo con hooks + plugins declarados (landing-cursos-urn)"*. No
+      verificado en esta sesión (no se copió su `settings.json`); pendiente completo.
+- [ ] 5.7 **PENDIENTE MANUAL** — Rodar `/release-gate:doctor` en cada repo tras su upgrade y
+      confirmar cero hallazgos sobre las piezas nuevas (checksum + presencia). — *gate-vendoring:
+      "Custodia de doctor — checksum" y "— presencia"; gate-doctrina: "Bloque presente y
+      vigente"*. `doctor.md` es prosa para un Claude interactivo real; no hay runner
+      automatizado para simularlo sin invocar el comando real sobre los repos reales.
 - [x] 5.8 N/A — DEUDA para v0.5.0 (decisión ratificada por Rodrigo): `doctor` NO audita el uso
       de `GATE_SKIP` en esta release. `gate-run.sh` no agrega el campo al schema de
       `last-run.json`. La deuda queda anotada en `docs/referencia.md` (Batch 4, pendiente) tal
@@ -240,3 +297,5 @@
 - [ ] 5.9 Verificación de cierre final: `bash scripts/validate-manifest.sh` en 0.4.0 sobre el
       plugin ya instalado en los repos actualizados; correr los 7 repos por CI (red final) y
       confirmar que sigue en verde sin cambios de baseline salvo el campo `plugin`.
+      `validate-manifest.sh` ya corrido y en verde sobre el manifiesto del plugin (ver nota de
+      batch); falta la corrida sobre el plugin instalado en cada repo y la CI de los 7.

@@ -6,8 +6,11 @@ hoy se congela y solo se permite mejorar.
 
 - Scripts **idénticos entre proyectos**; todo dato del proyecto vive en
   `.gate/baseline.json` (schema 1).
-- Dos perfiles: **medida** (sistemas con dominio → + PHPStan n8 con trinquete) y
-  **landing** (sitios → + innerHTML, links, headers, Lighthouse).
+- Dos perfiles: **landing** (sitios de presentación — 8 checks: formato, taint,
+  secretos, deps, innerHTML, links) y **medida** (sistemas con dominio — los 8
+  anteriores **más** PHPStan n8 con trinquete, reglas propias, PHPMD y Deptrac:
+  14). **medida es superconjunto estricto de landing**, así que elegirlo nunca
+  cuesta cobertura: la única pregunta es si el repo tiene dominio propio.
 - Los scripts se **vendorean** al repo: el gate corre en CI y en máquinas sin el
   plugin; el drift lo custodia `/release-gate:doctor` por checksum.
 

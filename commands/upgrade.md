@@ -30,6 +30,7 @@ Leé el `perfil` del baseline y armá la lista de faltantes:
 | Necesita | medida | landing |
 |---|---|---|
 | Psalm taint (`psalm.xml`) | sí | sí |
+| `gate-links.php` + `inner_html.permitidos` | sí | sí |
 | PHPMD (`phpmd.xml`) | sí | no |
 | Deptrac (`deptrac.yaml`) | sí | no |
 | Reglas propias (`phpstan/Rules/`) | sí | no |
@@ -37,6 +38,21 @@ Leé el `perfil` del baseline y armá la lista de faltantes:
 Las reglas propias son reglas de PHPStan: **si el repo no tiene PHPStan, no van**.
 Un repo `landing` no tiene PHPStan por diseño; si el usuario quiere las reglas ahí,
 eso no es un upgrade sino un cambio de perfil — es otra conversación, traésela.
+
+### Si venís de un plugin < 0.3.0 con perfil `medida`
+
+Desde la v0.3.0 **medida es superconjunto estricto de landing**: incorporó los dos
+checks de superficie que antes eran exclusivos de landing. A un repo medida viejo
+le faltan, entonces, dos cosas que el gate nuevo va a exigir:
+
+1. **`scripts/gate-links.php`** vendoreado (antes solo se copiaba en landing).
+2. **`inner_html.permitidos`** en el baseline. Si la clave no existe, el check
+   corre con lista vacía: cualquier `innerHTML` bloquea. Medí primero (paso 5),
+   no escribas la clave a ciegas.
+
+⚠️ **El check de links no tiene baseline: o pasa o bloquea.** En un repo que nunca
+lo corrió es muy probable que encuentre algo — y lo que encuentra no se congela,
+se arregla. Corrélo ANTES de prometerle al usuario que el upgrade es mecánico.
 
 Mostrale al usuario la lista de lo que falta y **confirmá antes de instalar**.
 
@@ -61,8 +77,9 @@ Verificá versión de cada binario instalado antes de seguir.
 ## 3. Vendorear
 
 Scripts, desde `${CLAUDE_PLUGIN_ROOT}/scripts/`: `gate-check-<perfil>.sh` →
-`scripts/gate-check.sh` (pisa el viejo), y los demás del perfil según `init`.
-`chmod +x`. NO los edites.
+`scripts/gate-check.sh` (pisa el viejo), y los demás según `init` —
+`gate-headers.sh`, `gate-lighthouse.sh` y `gate-links.php`, los tres en **ambos**
+perfiles desde la v0.3.0. `chmod +x` a los `.sh`. NO los edites.
 
 Plantillas, desde `${CLAUDE_PLUGIN_ROOT}/plantillas/`, solo las del perfil:
 
@@ -117,6 +134,16 @@ después congelá.
    otra cosa, el refactor rompió algo: frená.
    Actualizá `phpstan.entradas_baseline` y dejá en `phpstan.nota_entradas` por qué
    creció (regla nueva, no código nuevo).
+5. **innerHTML** (medida que viene de < 0.3.0, si no tenía la clave): buscá
+   `innerHTML|v-html` en `resources/js` y `resources/views`, LEÉ cada hit y armá
+   la lista propuesta de permitidos con tu veredicto por archivo. **Confirmación
+   humana explícita antes de escribirla** — permitir un `innerHTML` es una
+   decisión de seguridad, no un trámite. El porqué va en `inner_html.nota`, con
+   fecha: dentro de seis meses nadie se acuerda de qué se revisó.
+6. **links internos**: `php scripts/gate-links.php`. **No tiene baseline ni lo va
+   a tener**: un `route()` que no existe es un 500 esperando a que alguien abra
+   esa vista. Si encuentra algo, arreglalo en esta misma rama y decile al usuario
+   qué era; no sigas con el upgrade dejándolo roto.
 
 ## 6. Actualizar `.gate/baseline.json`
 
@@ -127,8 +154,13 @@ Agregá solo las del perfil (ejemplos completos en `${CLAUDE_PLUGIN_ROOT}/docs/r
 "psalm":   { "modo": "taint-only", "congelado": "<hoy>", "entradas_baseline": 0 },
 "phpmd":   { "reglas": "curado: unusedcode + codesize + design selecto", "congelado": "<hoy>", "entradas_baseline": 0 },
 "deptrac": { "modo": "pragmático: Controller→Model permitido (bindings); queries en Actions", "congelado": "<hoy>", "entradas_baseline": 0 },
-"reglas_gate": { "descripcion": "Reglas propias en phpstan/Rules/: prohíben queries y escrituras de Eloquent en Controllers", "congelado": "<hoy>", "ocurrencias_congeladas": 0 }
+"reglas_gate": { "descripcion": "Reglas propias en phpstan/Rules/: prohíben queries y escrituras de Eloquent en Controllers", "congelado": "<hoy>", "ocurrencias_congeladas": 0 },
+"inner_html": { "permitidos": [], "nota": "qué se revisó y cuándo" }
 ```
+
+`inner_html` va en **ambos** perfiles desde la v0.3.0. Un repo medida que venía de
+antes no la tenía: agregala con lo que hayas medido, nunca con una lista copiada
+de otro repo.
 
 Actualizá también `plugin` a la versión nueva.
 

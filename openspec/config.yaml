@@ -1,0 +1,83 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Plugin de Claude Code "release-gate" v0.3.0, compuerta de calidad para
+  código de agentes. Scripts bash vendoreados (scripts/gate-check-*.sh,
+  gate-headers.sh, gate-lighthouse.sh, gate-links.php, validate-manifest.sh)
+  a 7 repos Laravel consumidores; el plugin mismo no se instala en ellos.
+  Comandos markdown en commands/ (init, upgrade, doctor, ratchet, run,
+  deploy-check). Perfiles medida (14 checks) y landing (8 checks), baseline
+  con trinquete en .gate/baseline.json de cada repo consumidor.
+  Testing: sin framework automatizado; única validación es
+  validate-manifest.sh (`claude plugin validate --strict`).
+  Estilo: español en docs/artefactos, conventional commits sin atribución AI,
+  scripts bash con `set -euo pipefail`, uso de bat/rg/fd/sd/eza (no
+  cat/grep/find/sed/ls).
+
+strict_tdd: false
+
+testing:
+  strict_tdd_mode: disabled
+  detected: "2026-08-13"
+  test_runner:
+    available: false
+    command: null
+    framework: null
+  test_layers:
+    unit:
+      available: false
+      tool: null
+    integration:
+      available: false
+      tool: null
+    e2e:
+      available: false
+      tool: null
+  coverage:
+    available: false
+    command: null
+  quality_tools:
+    linter:
+      available: false
+      command: null
+    type_checker:
+      available: false
+      command: null
+    formatter:
+      available: false
+      command: null
+  notes: |
+    Repo sin test runner: es un plugin de bash scripts + comandos markdown.
+    La única gate propia es validate-manifest.sh (claude plugin validate
+    --strict) sobre .claude-plugin/plugin.json. strict_tdd deshabilitado
+    por ausencia de test runner, según decisión explícita del stack real
+    (sin tests automatizados).
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Identify affected modules/packages (scripts/, commands/, plantillas/, docs/)
+  specs:
+    - Use Given/When/Then format for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group tasks by phase (infrastructure, implementation, testing)
+    - Use hierarchical numbering (1.1, 1.2, etc.)
+    - Keep tasks small enough to complete in one session
+  apply:
+    - Follow existing code patterns and conventions
+    - Load relevant coding skills for the project stack
+    tdd: false
+    test_command: ""
+  verify:
+    - Run validate-manifest.sh if plugin manifest or command files changed
+    - Compare implementation against every spec scenario
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas (large removals)

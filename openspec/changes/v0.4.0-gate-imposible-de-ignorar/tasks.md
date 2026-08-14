@@ -1,0 +1,211 @@
+# Tasks: v0.4.0 — El gate imposible de ignorar
+
+> ⛔ **BLOQUEADO**: esta implementación NO arranca hasta que Rodrigo revise `design.md`,
+> en particular las 3 decisiones abiertas listadas al final del design (gate-run.sh como
+> 5ª pieza, formato del override GATE_SKIP=1, y si doctor debe marcar el uso de GATE_SKIP en
+> last-run.json). Las tareas marcadas ⚠ dependen directamente de esas decisiones y pueden
+> cambiar de forma o desaparecer según la respuesta de Rodrigo.
+>
+> Nota de consistencia a resolver junto con la revisión: la tabla "Cambios por archivo" del
+> design nombra los hooks en `scripts/hooks/gate-*.sh`, pero el resto del design (shapes de
+> `settings.json`, spec de gate-hooks, sección de rollback) usa `.claude/hooks/gate-*.sh`.
+> Las tareas de abajo siguen `.claude/hooks/` por ser la ruta consistente con el contrato de
+> `settings.json` — confirmar con Rodrigo antes de implementar.
+
+## Batch 1: Scripts nuevos — gate-status.sh y gate-run.sh
+
+- [ ] 1.1 Crear `scripts/gate-status.sh`: guard por ausencia de `.gate/baseline.json` (cero
+      output, `exit 0`). — *gate-status: Requirement "Guard por ausencia de baseline"*
+- [ ] 1.2 Implementar conteo por herramienta (`grep -c ... || true`, guard `if [ -f ]` explícito,
+      nunca `[ -f ] && VAR=`) para PHPStan/Psalm/PHPMD/Deptrac según perfil activo (medida = 4
+      filas, landing = solo Psalm). — *gate-status: "Tablero de tres columnas", escenarios
+      "Perfil medida completo" y "Perfil landing solo Psalm"*
+- [ ] 1.3 Columna "realidad" fija en `requiere analisis` para las 4 herramientas; el script
+      MUST NOT ejecutar ninguna herramienta de análisis. — *gate-status: "Tablero de tres
+      columnas"*
+- [ ] 1.4 Lógica "SE PUEDE APRETAR": disparar cuando `en_archivo < congelado` para alguna
+      herramienta, o cuando `.gate/last-run.json` trae conteos menores a los congelados.
+      — *gate-status: "Detección de SE PUEDE APRETAR", escenarios "Archivo de baseline se
+      achicó" y "Sin evidencia de mejora"*
+- [ ] 1.5 Columna versión: `baseline.plugin` (vendoreado) vs
+      `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (disponible), marca ⚠ si difieren; si
+      `CLAUDE_PLUGIN_ROOT` no está definida, omitir columna sin fallar. — *gate-status:
+      "Versión vendoreada vs disponible", escenario "Drift de versión"*
+- [ ] 1.6 Sección fecha del último gate: leer `.gate/last-run.json`; sin archivo → "Ultimo
+      gate: sin registro (corre /release-gate:run)"; commit distinto al HEAD → advertencia de
+      evidencia vieja. — *gate-status: "Fecha del último gate en el tablero", escenarios "Sin
+      evidencia previa" y "Evidencia desactualizada"*
+- [ ] 1.7 Cerrar `gate-status.sh` con `set -euo pipefail`, `cd "$(dirname "$0")/.."`, texto
+      plano a stdout, `exit 0` siempre. Verificar presupuesto <300ms sin overhead de Claude
+      Code. — *gate-status: "Presupuesto de tiempo", escenario "Baseline grande no re-analiza"*
+- [ ] 1.8 ⚠ Crear `scripts/gate-run.sh`: correr `gate-check.sh` intacto (sin modificarlo),
+      capturar su exit code, escribir siempre `.gate/last-run.json` (aprobado o bloqueado) con
+      schema `{schema, fecha, commit, arbol_limpio, veredicto, perfil, plugin, conteos}`, y
+      propagar el exit code original. — *gate-status: "`.gate/last-run.json` — escritura y
+      ciclo de vida", escenarios "Corrida aprobada escribe evidencia" y "Corrida bloqueada
+      también escribe evidencia"*. Condicionada a la decisión abierta #1 de Rodrigo (¿se
+      acepta como 5ª pieza vendoreada?).
+- [ ] 1.9 Agregar `.gate/last-run.json` a `.gitignore` del repo consumidor. — *gate-status:
+      "`.gate/last-run.json` — escritura y ciclo de vida" (SHALL estar en .gitignore)*
+- [ ] 1.10 Verificación manual de cierre de batch: correr `gate-status.sh` en pos-llantera
+      (903 phpstan) y medir <300ms; correr en un repo sin `.gate/baseline.json` y confirmar
+      output vacío + exit 0; simular archivo de baseline achicado y confirmar aviso "SE PUEDE
+      APRETAR"; correr `gate-run.sh` en aprobado y bloqueado y confirmar `last-run.json` en
+      ambos casos con exit code correcto. Correr `bash scripts/validate-manifest.sh` (no debe
+      romper: aún no tocamos el manifiesto en este batch).
+
+## Batch 2: Plantillas de hooks + bloque CLAUDE.md
+
+- [ ] 2.1 Crear `.claude/hooks/gate-session-status.sh`: registrable bajo `SessionStart` sin
+      `matcher`, invoca `scripts/gate-status.sh`, termina siempre `exit 0`; sin
+      `.gate/baseline.json` produce cero output (delegado al guard de gate-status.sh).
+      — *gate-hooks: "Hook SessionStart — shape y guard", escenarios "Sesión en repo gateado"
+      y "Sesión en repo sin gate"*
+- [ ] 2.2 Crear `.claude/hooks/gate-push-guard.sh` — paso 1: leer payload de stdin, extraer
+      `tool_input.command` con `sed` (no `jq`, igual que `git-guard.sh`). — *gate-hooks: "Hook
+      PreToolUse — descarte rápido en el hot path"*
+- [ ] 2.3 Descarte inmediato por regex antes de tocar disco: solo continúa si el comando
+      matchea `(^|[;&|][[:space:]]*)git([[:space:]]+-[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)`.
+      — *gate-hooks: "Hook PreToolUse — descarte rápido...", escenarios "Comando Bash no
+      relacionado" y "Push encadenado con otros comandos"*
+- [ ] 2.4 ⚠ Orden de excepciones tras detectar push: (1) `--dry-run` → exit 0; (2)
+      `GATE_SKIP=1` presente en el comando → exit 0 (override visible en transcript); (3) sin
+      `.gate/baseline.json` → exit 0; (4) rama destino ≠ `main`/`dev` → exit 0. — *gate-hooks:
+      "Orden de descarte y excepciones", escenarios "Push a rama no protegida", "Override
+      explícito", "Repo sin baseline"*. Condicionada a la decisión abierta #2 de Rodrigo
+      (formato/existencia de `GATE_SKIP=1`).
+- [ ] 2.5 Resolver rama destino: refspec explícito del comando si está, si no
+      `git branch --show-current`; deny (JSON `permissionDecision: deny`, nunca exit code) si
+      no hay `.gate/last-run.json` con `veredicto == APROBADO`, `commit == HEAD` y
+      `arbol_limpio`; mensaje de deny con motivo exacto (sin evidencia / bloqueado / commit
+      viejo / árbol sucio) y fix `/release-gate:run`. — *gate-hooks: "Deny — evidencia
+      insuficiente", escenarios "Evidencia verde y vigente", "Sin evidencia previa",
+      "Evidencia de un commit viejo", "Fuerza no exime"*
+- [ ] 2.6 Formato exacto de bloqueo:
+      `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"<mensaje>"}}`
+      seguido de `exit 0`. — *gate-hooks: "Formato de bloqueo", escenario "JSON de deny bien
+      formado"*
+- [ ] 2.7 Validar contra la tabla de falsos positivos/negativos aceptados del design (echo con
+      `git push` literal, comillas escapadas que rompen el sed, push a remote no protegido con
+      rama `dev`) — no requiere código nuevo, es criterio de aceptación del script ya escrito.
+      — *gate-hooks: "Falsos positivos y negativos aceptados", escenario "Falso positivo de
+      echo"*
+- [ ] 2.8 Crear `plantillas/claude-md-bloque.md` con el bloque delimitado por
+      `<!-- release-gate:inicio -->` / `<!-- release-gate:fin -->` y las 4 reglas de doctrina
+      (baseline no se edita, ratchet aprieta, scripts no se editan a mano, push sin corrida
+      verde queda bloqueado). — *gate-doctrina: "Contenido del bloque", escenario "Bloque
+      instalado en repo nuevo"*
+- [ ] 2.9 Verificación manual de cierre de batch: batería de strings de la tabla de falsos
+      positivos/negativos contra `gate-push-guard.sh` sin invocar Claude (comando no-push,
+      push encadenado, `--dry-run`, `GATE_SKIP=1`, `--force`, rama no protegida, `echo "git
+      push"`, comando con comillas escapadas); medir tiempo de descarte de un comando no-push
+      (<100ms). `bash scripts/validate-manifest.sh` no debe fallar.
+
+## Batch 3: Comandos init/upgrade/doctor + run.md
+
+- [ ] 3.1 Modificar `commands/init.md` §2: vendorear `gate-status.sh`, `gate-run.sh` y los 2
+      hooks a `.claude/hooks/` con `chmod +x` sobre los `.sh`. — *gate-vendoring: "`init`
+      instala las piezas nuevas", escenario "Init en repo limpio"*
+- [ ] 3.2 Agregar `commands/init.md` §2c (nuevo): algoritmo de merge de `settings.json`
+      ejecutado por Claude con Read+Edit — sin `.claude/` crea directorio+archivo solo con
+      `hooks`; con archivo sin `hooks` agrega la clave sin tocar `enabledPlugins`/
+      `extraKnownMarketplaces`; detección de idempotencia por subcadena
+      `gate-session-status.sh`/`gate-push-guard.sh`; `SessionStart` existente → append;
+      `PreToolUse` existente con matcher `"Bash"` → agrega al array de ese matcher, si no
+      existe crea la entrada nueva sin tocar la de `git-guard`; verificación post-merge con
+      `php -r json_decode` + claves previas presentes. — *gate-vendoring: "`init` instala las
+      piezas nuevas"; "Merge idempotente ejecutado por Claude"*
+- [ ] 3.3 `commands/init.md` §2c: instalar bloque de doctrina en `CLAUDE.md` (agregar completo
+      con marcadores si no existen, sin eliminar contenido previo del repo) y agregar
+      `.gate/last-run.json` a `.gitignore`. — *gate-doctrina: "CLAUDE.md sin bloque previo";
+      gate-vendoring: "`init` instala las piezas nuevas"*
+- [ ] 3.4 Modificar `commands/upgrade.md` §3: re-vendorear las 5 piezas pisando versiones
+      anteriores de scripts propios; reemplazo idempotente del bloque `CLAUDE.md` solo entre
+      marcadores (resto del archivo intacto); mismo algoritmo de merge aditivo de
+      `settings.json` que init (§3.2); MUST NOT re-medir baseline existente ni eliminar hooks/
+      plugins/marketplaces preexistentes. — *gate-vendoring: "`upgrade` propaga sin perder
+      estado ajeno", escenarios "Upgrade preserva hooks de la casa (pos-llantera)", "Upgrade
+      en repo sin bloque hooks (landing-crb, landing-urn)", "Upgrade en repo con hooks +
+      plugins declarados (landing-cursos-urn)", "Segunda corrida no duplica"; gate-doctrina:
+      "Upgrade reemplaza el bloque sin tocar el resto del archivo"; gate-vendoring: "Ausencia
+      de re-medición", escenario "Upgrade no re-mide baseline existente"*
+- [ ] 3.5 Modificar `commands/doctor.md` §3: sumar checksum (`shasum` contra
+      `${CLAUDE_PLUGIN_ROOT}`) de `gate-status.sh`, `gate-run.sh` y los 2 hooks a la lista
+      existente. — *gate-vendoring: "Custodia de doctor — checksum", escenario "Script editado
+      a mano"*
+- [ ] 3.6 Agregar `commands/doctor.md` §3c (nuevo): verificación por presencia (no checksum) de
+      las 2 entradas de hooks en `settings.json`, del bloque delimitado en `CLAUDE.md`, y de la
+      línea `.gate/last-run.json` en `.gitignore`; confirmar que hooks preexistentes ajenos
+      siguen intactos. — *gate-vendoring: "Custodia de doctor — presencia", escenarios "Entrada
+      de settings.json ausente" y "Línea de .gitignore ausente"; gate-doctrina: "Verificación
+      de presencia por doctor", escenarios "Bloque ausente" y "Bloque presente y vigente"*
+- [ ] 3.7 Agregar a `commands/doctor.md` una tabla explícita en prosa de archivos custodiados
+      (checksum: `gate-check.sh`, `gate-headers.sh`, `gate-lighthouse.sh`, `gate-links.php`,
+      `gate-status.sh`, `gate-run.sh`, `.claude/hooks/gate-session-status.sh`,
+      `.claude/hooks/gate-push-guard.sh`, plantillas, `phpstan/Rules/*.php`; presencia: bloque
+      `CLAUDE.md`, entradas de `settings.json`, línea de `.gitignore`) — sin manifiesto JSON
+      declarativo. — *gate-vendoring: "Custodia de doctor — presencia" (SHALL incluir tabla
+      explícita)*
+- [ ] 3.8 ⚠ Modificar `commands/run.md`: invocar `./scripts/gate-run.sh` en vez de
+      `gate-check.sh` directamente. — *gate-status: "`.gate/last-run.json` — escritura y ciclo
+      de vida"; consistente con el diagrama del design (`/release-gate:run` → `gate-run.sh`)*.
+      Condicionada a la decisión abierta #1 de Rodrigo.
+- [ ] 3.9 Verificación manual de cierre de batch: sobre copias de los 3 repos testigo
+      (base-project con hooks completos, landing-crb sin clave `hooks`, pos-llantera con
+      `PostToolUse` de 2 matchers) correr el merge de `settings.json` dos veces y confirmar
+      idempotencia (sin duplicados) y que los hooks/plugins ajenos sobreviven intactos; borrar/
+      mutar cada pieza nueva (uno por uno: script, hook, bloque CLAUDE.md, entrada
+      settings.json, línea .gitignore) y confirmar que `doctor` la detecta. Cerrar con
+      `bash scripts/validate-manifest.sh` (`claude plugin validate --strict`).
+
+## Batch 4: docs/referencia.md y bump de versión 0.4.0
+
+- [ ] 4.1 Modificar `docs/referencia.md`: documentar schema de `.gate/last-run.json` (los 7
+      campos: `schema, fecha, commit, arbol_limpio, veredicto, perfil, plugin, conteos`).
+      — *gate-status: "`.gate/last-run.json` — escritura y ciclo de vida"*
+- [ ] 4.2 `docs/referencia.md`: documentar contrato de los 2 hooks (SessionStart sin matcher +
+      guard por baseline; PreToolUse/Bash con orden de descarte, deny JSON, tabla de falsos
+      positivos/negativos). — *gate-hooks: todos los requirements*
+- [ ] 4.3 `docs/referencia.md`: agregar/actualizar tabla de archivos vendoreados incluyendo las
+      5 piezas nuevas y qué operación (init/upgrade/doctor) las toca. — *gate-vendoring:
+      "`init` instala las piezas nuevas"; "`upgrade` propaga..."; "Custodia de doctor"*
+- [ ] 4.4 Modificar `.claude-plugin/plugin.json`: bump `version` de `0.3.0` a `0.4.0`.
+      — *gate-vendoring: contexto general del change (v0.4.0); design "Rollout" (bump antes de
+      `/plugin` + reinicio)*
+- [ ] 4.5 Verificación manual de cierre de batch: `bash scripts/validate-manifest.sh`
+      (`claude plugin validate --strict`) debe pasar con el manifiesto en 0.4.0; revisión
+      visual de que `docs/referencia.md` no contradice ninguna de las 4 specs.
+
+## Batch 5: Verificación manual end-to-end en repo testigo
+
+- [ ] 5.1 Bump del plugin instalado: Rodrigo corre `/plugin` y reinicia Claude Code (fuera del
+      alcance de este agente — anotado como paso manual del Rollout).
+- [ ] 5.2 Ejecutar `/release-gate:upgrade` en **base-project** (menor riesgo, hooks completos)
+      y confirmar: las 5 piezas presentes, `settings.json` válido con hooks previos intactos,
+      bloque `CLAUDE.md` instalado, `.gate/baseline.json` sin cambios salvo campo `plugin`.
+      — *design "Rollout"; gate-vendoring: "Ausencia de re-medición"*
+- [ ] 5.3 SessionStart end-to-end en base-project: medir tiempo desde arranque de sesión hasta
+      tablero impreso (<2s). — *gate-status: "Presupuesto de tiempo" (SHOULD <2s end-to-end)*
+- [ ] 5.4 E2E push bloqueado: en rama `dev` de un repo de prueba sin `.gate/last-run.json`,
+      intentar `git push` vía Claude y confirmar que no pasa; correr `/release-gate:run`,
+      confirmar `last-run.json` verde y que el push subsiguiente sí pasa. — *gate-hooks: "Deny
+      — evidencia insuficiente", escenario "Sin evidencia previa"; design "Estrategia de
+      verificación" fila E2E*
+- [ ] 5.5 Ejecutar `/release-gate:upgrade` en **pos-llantera** (`PostToolUse` con 2 matchers) y
+      en **landing-crb**/**landing-urn** (sin clave `hooks`) y confirmar en cada uno los
+      escenarios específicos de `gate-vendoring` para esos repos. — *gate-vendoring: escenarios
+      "Upgrade preserva hooks de la casa (pos-llantera)" y "Upgrade en repo sin bloque hooks
+      (landing-crb, landing-urn)"*
+- [ ] 5.6 Ejecutar `/release-gate:upgrade` en **landing-cursos-urn** (hooks + plugins
+      declarados) y confirmar que ambos bloques conviven sin pérdida. — *gate-vendoring:
+      escenario "Upgrade en repo con hooks + plugins declarados (landing-cursos-urn)"*
+- [ ] 5.7 Rodar `/release-gate:doctor` en cada repo tras su upgrade y confirmar cero hallazgos
+      sobre las piezas nuevas (checksum + presencia). — *gate-vendoring: "Custodia de doctor —
+      checksum" y "— presencia"; gate-doctrina: "Bloque presente y vigente"*
+- [ ] 5.8 ⚠ Si Rodrigo confirmó la decisión abierta #3 (doctor marca uso de `GATE_SKIP` en
+      `last-run.json`): agregar el campo al schema, a `gate-run.sh` y al chequeo de `doctor`
+      antes de esta verificación end-to-end. Si no la confirmó, dejar la deuda anotada en
+      `docs/referencia.md` tal como está en el design ("Riesgos residuales").
+- [ ] 5.9 Verificación de cierre final: `bash scripts/validate-manifest.sh` en 0.4.0 sobre el
+      plugin ya instalado en los repos actualizados; correr los 7 repos por CI (red final) y
+      confirmar que sigue en verde sin cambios de baseline salvo el campo `plugin`.

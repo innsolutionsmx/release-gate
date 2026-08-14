@@ -96,14 +96,25 @@ esperado (CI queda como red final):
 
 | Caso | Resultado |
 |---|---|
-| `echo "git push"` / heredoc con `git push` literal | Falso positivo: deny informativo, override disponible |
+| `git -c foo=bar push origin dev` / `git -C dir push origin dev` | Detectado (deny si rama protegida): el grupo de opciones globales admite un token de valor separado entre `git` y `push` |
+| `git -C ../otro-repo push origin dev` | Detectado (deny si rama protegida) — limitación aceptada: el guard evalúa el repo de la sesión, no el repo apuntado por `-C` |
+| `git stash push` / `git -C dir stash push` | Permitido: `stash` nunca queda inmediatamente después de `git`+opciones, nunca matchea |
+| `echo "git push"` / heredoc con `git push` literal | No matchea: el ancla de inicio/encadenamiento evita el falso positivo; el allow es el comportamiento correcto |
 | Comando con comillas escapadas que rompe el `sed` de extracción | Falso negativo: falla abierto (limitación heredada de `git-guard.sh`) |
 | `git push` a remote no protegido con rama `dev` | Denegado — el guard mira la rama destino, no el remote |
 
-#### Scenario: Falso positivo de echo
+#### Scenario: Echo no dispara el guard
 - GIVEN el comando `echo "git push origin dev"`
 - WHEN el hook lo procesa
-- THEN deniega informativamente aunque no sea un push real; el override `GATE_SKIP=1` lo destraba
+- THEN el comando NO matchea el regex de detección (el `git` de adentro no está en
+  posición de inicio de comando ni tras `;`/`&`/`\|`) y el hook termina en `exit 0`
+  sin denegar
+
+#### Scenario: Opciones globales con argumento separado no rompen la detección
+- GIVEN el comando `git -c foo=bar push origin dev` (o `git -C dir push origin dev`)
+- WHEN el hook lo procesa
+- THEN el comando matchea el regex de detección igual que `git push origin dev` sin
+  opciones, y sigue el flujo normal de evaluación de evidencia para la rama destino
 
 ### Requirement: Formato de bloqueo
 Cuando deniega, el script SHALL imprimir exactamente

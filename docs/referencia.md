@@ -282,8 +282,11 @@ fricción temprana, no la única barrera):
 | `git add . && git commit -m x && git push` | detectado — el regex ancla en `;`/`&`/`\|` |
 | `git push --force origin dev` | detectado y denegado — `--force` no exime |
 | `git push origin feat/x` | permitido — rama no protegida |
-| `git -c foo=bar push origin dev` | detectado — el regex tolera flags entre `git` y `push` |
-| `echo "git push"` / heredoc con `git push` | falso positivo — deny informativo, override disponible |
+| `git -c foo=bar push origin dev` | detectado (deny si rama protegida) — el grupo de opciones admite un token de valor separado entre `git` y `push` |
+| `git -C dir push origin dev` | detectado (deny si rama protegida) — mismo mecanismo que `-c` |
+| `git -C ../otro-repo push origin dev` | detectado (deny si rama protegida) — limitación aceptada: el guard evalúa el repo de la sesión, no el repo apuntado por `-C`; CI del repo real queda como red final |
+| `git stash push` / `git -C dir stash push` | permitido — `stash` nunca queda inmediatamente después de `git`+opciones, nunca matchea |
+| `echo "git push origin dev"` | no matchea — el ancla de inicio/encadenamiento evita el falso positivo; el allow es el comportamiento correcto |
 | comando con `\"` escapadas que rompe el `sed` | falso negativo — falla abierto, limitación heredada de `git-guard.sh` |
 | `git push` a un remote no protegido con rama `dev` | denegado — el guard mira la rama, no el remote |
 

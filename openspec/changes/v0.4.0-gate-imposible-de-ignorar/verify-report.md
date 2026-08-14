@@ -9,7 +9,8 @@
 
 ## Executive summary
 
-**Veredicto: PASS CON WARNINGS.**
+**Veredicto: PASS CON WARNINGS** (WARNING #1 resuelto en esta sesión; WARNING #2 —
+Batch 5 pendiente sobre repos reales — sigue abierto y es manual por naturaleza).
 
 Las 5 piezas vendoreadas (`gate-status.sh`, `gate-run.sh`, los 2 hooks, el bloque de
 `CLAUDE.md`) están implementadas fielmente a `design.md` y cubren los 3 comandos
@@ -22,20 +23,23 @@ ejecutables — verificado leyendo cada línea, no solo grepeando. El schema de
 (`gate-run.sh`), los dos lectores (`gate-status.sh`, `gate-push-guard.sh`) y
 `docs/referencia.md`. `validate-manifest.sh` pasa en 0.4.0.
 
-El único hallazgo real es documental, no de código: el regex del guard (fiel al que
-especifica el design) no detecta 2 de los casos que la tabla de "falsos
-positivos/negativos aceptados" — presente en **tres lugares**: `design.md`,
-`gate-hooks/spec.md` (la spec, no solo el design) y `docs/referencia.md` — afirma
-como detectados. Verificado empíricamente con `grep -Eq` contra el regex exacto del
-script: `echo "git push origin dev"` y `git -c foo=bar push origin dev` NO
-matchean. El script es fiel al regex que el design/spec prescriben letra por letra;
-la tabla que describe su comportamiento está equivocada en esos dos casos. Clasificado
-WARNING (no CRITICAL) porque: (a) es un falso negativo conocido y ya anotado por el
-propio equipo en tasks.md 2.7 y en la nota de Batch 5, (b) CI queda como red final, (c)
-no bloquea ningún requirement funcional — bloquea la afirmación en la doc. Pero al
-estar también en la spec (no solo en design.md, que es más tolerable como "nota de
-implementación"), technically hay una spec cuyo escenario ("Falso positivo de echo")
-no se cumple tal como está redactado.
+**Actualización post-verify (2026-08-14): WARNING #1 RESUELTO.** El hallazgo
+original era documental, no de código: el regex del guard (fiel al que especificaba
+el design) no detectaba 2 de los casos que la tabla de "falsos positivos/negativos
+aceptados" — presente en **tres lugares**: `design.md`, `gate-hooks/spec.md` (la
+spec, no solo el design) y `docs/referencia.md` — afirmaba como detectados
+(`git -c foo=bar push origin dev`), y afirmaba que `echo "git push origin dev"`
+denegaba cuando en realidad no matcheaba. El dueño del repo decidió, tras revisar,
+**ampliar el regex** en vez de solo corregir la prosa: el grupo de opciones globales
+ahora admite un token de valor separado (`-c clave=valor`, `-C dir`) entre `git` y
+`push`, así que `git -c foo=bar push origin dev` y `git -C dir push origin dev`
+ahora sí se detectan — cerrando la brecha real entre lo prometido y lo implementado.
+El caso de `echo` se dejó como estaba (no matchea, por diseño: el `git` interno no
+está en posición de inicio de comando) y la prosa se corrigió en los tres archivos
+para decir eso. Batería re-corrida (24/24 PASS) y regex verificado exhaustivamente
+para no introducir falsos positivos nuevos (`git stash push` y
+`git -C dir stash push` siguen sin matchear). Detalle completo en la sección
+"Issues Found" más abajo.
 
 Cobertura de Batch 5: la verificación empírica sobre copias (regex, timings, merge de
 `settings.json`, `gate-status.sh` contra baselines reales) es sólida y ya de-riesga
@@ -173,7 +177,8 @@ escenarios que exigen los 7 repos reales o una sesión de Claude Code real.
 | Deny — evidencia insuficiente | Sin evidencia previa | Línea 89-91, motivo "sin evidencia" | ✅ COMPLIANT |
 | Deny — evidencia insuficiente | Evidencia de commit viejo | Línea 102-104, motivo "commit viejo" | ✅ COMPLIANT |
 | Deny — evidencia insuficiente | Fuerza no exime | `--force` no está entre `git` y `push`, no lo exime; verificado con test propio (`git push --force origin dev` MATCH) | ✅ COMPLIANT |
-| Falsos positivos/negativos aceptados | Falso positivo de echo | Escenario dice "deniega informativamente" — verificado (propio + Batch 5): `echo "git push origin dev"` NO matchea el regex real, exit 0 silencioso, **no deniega** | ❌ FAILING — el script no reproduce el escenario tal como está escrito en la spec (ver Warning #1) |
+| Falsos positivos/negativos aceptados | Echo no dispara el guard | `echo "git push origin dev"` NO matchea el regex (verificado con batería post-fix), `exit 0` silencioso, no deniega | ✅ COMPLIANT — spec corregida (WARNING #1 resuelto) para describir el comportamiento real; el allow es correcto |
+| Falsos positivos/negativos aceptados | Opciones globales con argumento separado no rompen la detección | `git -c foo=bar push origin dev` y `git -C dir push origin dev` matchean tras ampliar el regex; `git stash push`/`git -C dir stash push` siguen sin matchear | ✅ COMPLIANT — verificado con batería post-fix (24/24 PASS) |
 | Formato de bloqueo | JSON de deny bien formado | `deny()` (línea 20-24): printf exacto al formato de la spec | ✅ COMPLIANT |
 
 #### gate-status (7 requirements, 11 escenarios)
@@ -206,12 +211,14 @@ escenarios que exigen los 7 repos reales o una sesión de Claude Code real.
 | Custodia doctor — presencia | Línea de .gitignore ausente | `doctor.md` §3c | ⚠️ PARTIAL — ídem |
 | Ausencia de re-medición | Upgrade no re-mide baseline existente | `upgrade.md` no toca baseline salvo campo `plugin` (§6, línea 201) | ✅ COMPLIANT — leído explícitamente, ningún paso de `upgrade.md` re-escribe `entradas_baseline` de una herramienta ya presente |
 
-**Resumen de compliance**: de 38 escenarios, 27 ✅ COMPLIANT (evidencia estructural +
-verificación manual real, en su mayoría de Batch 5 sobre copias reales, no fixtures),
-1 ❌ FAILING (el escenario "Falso positivo de echo" tal como está redactado en la
-spec — el script no deniega ese caso), 10 ⚠️ PARTIAL (lógica correcta y leída línea
-por línea, pero sin ejecución real contra un repo/Claude interactivo — corresponden 1
-a 1 con las tareas PENDIENTE MANUAL de Batch 5). 0 escenarios sin ningún tipo de
+**Resumen de compliance (post-fix WARNING #1, 2026-08-14)**: de 39 escenarios (38 +
+1 nuevo agregado al resolver el WARNING), 29 ✅ COMPLIANT (evidencia estructural +
+verificación manual real, en su mayoría de Batch 5 sobre copias reales más la
+batería de 24/24 PASS de esta sesión), 0 ❌ FAILING (el escenario "Falso positivo de
+echo" se reescribió como "Echo no dispara el guard" y ahora describe el
+comportamiento real del script), 10 ⚠️ PARTIAL (lógica correcta y leída línea por
+línea, pero sin ejecución real contra un repo/Claude interactivo — corresponden 1 a
+1 con las tareas PENDIENTE MANUAL de Batch 5). 0 escenarios sin ningún tipo de
 evidencia.
 
 ---
@@ -253,27 +260,52 @@ sobre los 4 archivos; diferencia informativa, no un hallazgo de implementación)
 
 **WARNING** (should fix):
 
-1. **La tabla de falsos positivos/negativos del guard está mal en 3 archivos, incluida la spec (no solo el design)** —
-   `design.md:164` y `docs/referencia.md:285` afirman `git -c foo=bar push origin dev`
-   → "detectado"; ambos y `gate-hooks/spec.md:99` (tabla) y `:104-106` (escenario "Falso
-   positivo de echo") afirman que `echo "git push origin dev"` deniega
-   informativamente. Verificado empíricamente (`grep -Eq` con el regex exacto del
-   script en producción): ninguno de los dos casos matchea — ambos salen con `exit 0`
-   silencioso, sin deny. El script es fiel al regex tal como está *escrito* en el
-   design (fidelidad reportada honestamente por el propio equipo en `tasks.md` 2.7);
-   el error está en la *descripción en prosa* de lo que ese regex hace, repetida sin
-   corregir en tres documentos. Clasificado WARNING y no CRITICAL porque: es un falso
-   negativo ya conocido y aceptado explícitamente (CI es la red final), no bloquea
-   ningún flujo de push real (`git push` sin `echo`/sin `-c` sigue detectándose en
-   17/19 casos de la batería de Batch 5), y el propio equipo ya documentó la
-   discrepancia — pero al estar en `gate-hooks/spec.md` (fuente de verdad), un futuro
-   `sdd-archive` que sincronice specs a `openspec/specs/` propagaría una afirmación
-   falsa como comportamiento contractual. Recomendación: antes de archivar, corregir
-   el escenario "Falso positivo de echo" en la spec (y las dos tablas en
-   `design.md`/`docs/referencia.md`) para que digan lo que el script realmente hace —
-   no ampliar el regex para satisfacer la tabla, eso agregaría falsos positivos
-   nuevos e injustificados a costa de latencia en el hot path.
-   — Archivos: `openspec/changes/v0.4.0-gate-imposible-de-ignorar/specs/gate-hooks/spec.md:99,104-106`; `openspec/changes/v0.4.0-gate-imposible-de-ignorar/design.md:164`; `docs/referencia.md:285-286`
+1. **RESUELTO (2026-08-14, sesión de fix dedicada).** La tabla de falsos
+   positivos/negativos del guard estaba mal en 3 archivos, incluida la spec (no solo
+   el design) — `design.md:164` y `docs/referencia.md:285` afirmaban que
+   `git -c foo=bar push origin dev` → "detectado"; ambos y `gate-hooks/spec.md:99`
+   (tabla) y `:104-106` (escenario "Falso positivo de echo") afirmaban que
+   `echo "git push origin dev"` denegaba informativamente. Verificado empíricamente
+   con el regex exacto del script en producción: ninguno de los dos casos matcheaba.
+
+   **Resolución adoptada por el dueño del repo (contraria a la recomendación
+   original de este reporte)**: en vez de solo corregir la prosa, se **amplió el
+   regex** para los casos de opciones globales con argumento (`-c`, `-C`), y se
+   corrigió la prosa **solo** para el caso de `echo` (que sí es comportamiento
+   correcto, no un hallazgo).
+
+   Regex final (`scripts/hooks/gate-push-guard.sh`, línea del paso 2 de descarte):
+   ```
+   (^|[;&|][[:space:]]*)git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push([[:space:]]|$)
+   ```
+   El grupo de opciones globales admite, por cada repetición, un token de valor
+   separado opcional que no empiece con `-` (cubre `-c clave=valor`, `-C dir`, en
+   general `-X valor`), pero exige que el token inmediato tras `git`+opciones sea
+   `push`. Efecto: `git -c foo=bar push origin dev` y `git -C dir push origin dev`
+   ahora SÍ matchean (detectados); `git stash push` y `git -C dir stash push` siguen
+   SIN matchear (verificado exhaustivamente — `stash` nunca puede ser el token
+   inmediato exigido); `echo "git push origin dev"` sigue SIN matchear por diseño
+   (el `git` interno no está en posición de inicio de comando ni tras un operador de
+   shell) — la prosa se corrigió para decir esto explícitamente en los tres archivos
+   (`design.md`, `docs/referencia.md`, `gate-hooks/spec.md`), reemplazando el
+   escenario "Falso positivo de echo" (que describía un deny que nunca ocurría) por
+   "Echo no dispara el guard". Se agregó también un escenario nuevo para las
+   opciones globales con argumento separado. Limitación anotada para
+   `-C ../otro-repo`: el guard evalúa el repo de la sesión, no el repo apuntado por
+   `-C`; CI del repo real queda como red final.
+
+   Batería re-corrida contra el script real (stdin JSON `PreToolUse`, mini-repo git
+   con fixtures de `.gate/`): 19 casos originales + 5 nuevos
+   (`git -C dir push origin dev`, `git -C ../otro-repo push origin dev`,
+   `git -C dir stash push`, `git -c a=b -c c=d push origin main`,
+   `git --git-dir=.git push origin dev`) = **24/24 PASS**. Timing tras el cambio
+   (5 corridas, comando no-push): min 30.10ms / mediana 30.85ms / max 34.84ms —
+   dentro del presupuesto de <100ms.
+   — Archivos tocados: `scripts/hooks/gate-push-guard.sh`,
+   `openspec/changes/v0.4.0-gate-imposible-de-ignorar/specs/gate-hooks/spec.md`,
+   `openspec/changes/v0.4.0-gate-imposible-de-ignorar/design.md`,
+   `docs/referencia.md`, `openspec/changes/v0.4.0-gate-imposible-de-ignorar/tasks.md`
+   (nota 2.7 y Batch 5).
 
 2. **Batch 5 deja 8 tareas reales sin ejecutar sobre los 7 repos** (5.1-5.7, 5.9) —
    correctamente marcadas como PENDIENTE MANUAL y fuera del alcance de un agente
@@ -312,9 +344,9 @@ sobre los 4 archivos; diferencia informativa, no un hallazgo de implementación)
 
 | Categoría | Cantidad |
 |---|---|
-| Escenarios totales (recontados) | 38 |
-| ✅ COMPLIANT (estructural + verificación manual real) | 27 |
-| ❌ FAILING (script no reproduce el escenario tal como está redactado) | 1 (gate-hooks: "Falso positivo de echo") |
+| Escenarios totales (post-fix WARNING #1) | 39 |
+| ✅ COMPLIANT (estructural + verificación manual real) | 29 |
+| ❌ FAILING | 0 (resuelto: ver WARNING #1) |
 | ⚠️ PARTIAL (lógica correcta, sin ejecución real — pendiente de Batch 5) | 10 |
 | Tasks pendientes de Batch 5 que cierran los PARTIAL de arriba | 8 (5.1-5.7, 5.9) |
 
@@ -326,10 +358,10 @@ sobre los 4 archivos; diferencia informativa, no un hallazgo de implementación)
 
 ### Risks
 
-- El WARNING #1 (tabla de falsos positivos/negativos) toca `gate-hooks/spec.md`, que
-  es fuente de verdad: si `sdd-archive` sincroniza specs sin corregirlo primero, la
-  afirmación falsa queda en `openspec/specs/gate-hooks/spec.md` como comportamiento
-  contractual permanente del plugin.
+- **RESUELTO**: el WARNING #1 (tabla de falsos positivos/negativos) ya no representa
+  un riesgo para `sdd-archive` — `gate-hooks/spec.md` fue corregida junto con el
+  regex del guard en esta sesión; la sincronización a `openspec/specs/` propagaría
+  ahora una afirmación consistente con el comportamiento real.
 - Los 10 escenarios PARTIAL dependen de que Batch 5 (5.1-5.7, 5.9) se ejecute sobre
   los 7 repos reales antes de considerar el change verdaderamente cerrado en
   producción — el archive de SDD puede proceder (el código está completo y

@@ -99,14 +99,26 @@
 - [x] 2.7 Validar contra la tabla de falsos positivos/negativos aceptados del design (echo con
       `git push` literal, comillas escapadas que rompen el sed, push a remote no protegido con
       rama `dev`) — no requiere código nuevo, es criterio de aceptación del script ya escrito.
-      — *gate-hooks: "Falsos positivos y negativos aceptados", escenario "Falso positivo de
-      echo"*. **Hallazgo de verificación**: con el regex EXACTO del design, `echo "git push
-      origin dev"` y `git -c foo=bar push origin dev` NO se detectan como push (ver sección de
-      desvíos del reporte de apply) — el regex ancla `git` a inicio de comando o a un operador
-      de shell, y el grupo de flags no admite pares `-x valor`. La tabla de falsos
-      positivos/negativos del design asume que SÍ se detectan. Implementado el regex tal cual
-      el design lo especifica (fidelidad al spec); discrepancia reportada para revisión de
-      Rodrigo, no corregida unilateralmente.
+      — *gate-hooks: "Falsos positivos y negativos aceptados", escenarios "Echo no dispara el
+      guard" y "Opciones globales con argumento separado no rompen la detección"*.
+      **Contradicción resuelta (WARNING #1 del verify-report)**: el hallazgo original —
+      `echo "git push origin dev"` y `git -c foo=bar push origin dev` NO se detectaban con el
+      regex original del design, mientras la tabla de prosa afirmaba que sí — se resolvió
+      AMPLIANDO el regex del guard, no la prosa. El grupo de opciones globales
+      (`([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*`) ahora admite,
+      por cada repetición, un token de valor separado opcional que no empiece con `-` — cubre
+      `-c clave=valor`, `-C dir` y, en general, `-X valor`. Regex final:
+      `(^|[;&|][[:space:]]*)git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push([[:space:]]|$)`.
+      Verificado exhaustivamente que `git stash push` y `git -C dir stash push` siguen SIN
+      matchear (el token inmediato tras `git`+opciones debe ser `push`, y `stash` nunca puede
+      serlo). El caso de `echo` sí quedó como estaba: no matchea por diseño (el `git` de adentro
+      no está en posición de inicio de comando ni tras un operador de shell) — la prosa de la
+      spec/design/referencia se corrigió para decir esto (allow es el comportamiento correcto),
+      en vez de ampliar el regex para que dispare sobre texto dentro de un `echo`, lo cual habría
+      agregado falsos positivos nuevos e injustificados. Limitación anotada para `-C
+      ../otro-repo`: el guard evalúa el repo de la sesión, no el repo apuntado por `-C`; CI del
+      repo real queda como red final. Batería completa (19 casos originales + 5 nuevos)
+      corrida contra el script real vía stdin JSON PreToolUse: 24/24 PASS.
 - [x] 2.8 Crear `plantillas/claude-md-bloque.md` con el bloque delimitado por
       `<!-- release-gate:inicio -->` / `<!-- release-gate:fin -->` y las 4 reglas de doctrina
       (baseline no se edita, ratchet aprieta, scripts no se editan a mano, push sin corrida
@@ -218,7 +230,14 @@
 >   confirmando el hallazgo ya anotado en 2.7: `echo "git push origin dev"` y
 >   `git -c foo=bar push origin dev` NO se detectan (la tabla de falsos positivos/negativos del
 >   design dice que sí deberían). `git stash push` tampoco matchea (correcto, no es push remoto,
->   caso no cubierto explícitamente por la tabla). Los 5 escenarios de `last-run.json` (verde,
+>   caso no cubierto explícitamente por la tabla). **Actualización post-verify (WARNING #1
+>   resuelto, ver nota ampliada en 2.7)**: el regex se amplió para admitir opciones globales con
+>   argumento separado (`-c clave=valor`, `-C dir`); `git -c foo=bar push origin dev` y
+>   `git -C dir push origin dev` ahora SÍ se detectan, `git stash push`/`git -C dir stash push`
+>   siguen sin detectarse, y la tabla de prosa (design/spec/referencia) se corrigió para reflejar
+>   que `echo "git push origin dev"` correctamente NO dispara el guard (no era un hallazgo a
+>   arreglar, era la descripción la que estaba mal). Batería re-corrida: 24/24 PASS. Los 5
+>   escenarios de `last-run.json` (verde,
 >   rojo/BLOQUEADO, commit distinto, árbol sucio, sin evidencia) deniegan con el motivo exacto
 >   documentado.
 > - **`gate-status.sh` contra baselines reales (copias)**: pos-llantera-jairo (medida, 903

@@ -145,7 +145,7 @@ Orden de descarte en `gate-push-guard.sh` (corre en el hot path de TODO Bash):
 
 1. `payload="$(cat 2>/dev/null || true)"`; extraer `command` con `sed` (no `jq`), igual que
    `git-guard.sh` extrae `file_path`.
-2. Descarte inmediato: `printf '%s' "$cmd" | grep -Eq '(^|[;&|][[:space:]]*)git([[:space:]]+-[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)'` — si no, `exit 0` **antes de tocar el disco**.
+2. Descarte inmediato: `printf '%s' "$cmd" | grep -Eq '(^|[;&|][[:space:]]*)git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push([[:space:]]|$)'` — si no, `exit 0` **antes de tocar el disco**. El grupo de opciones globales (`([[:space:]]+-[^[:space:]]+(...)?)*`) admite, por cada repetición, un token de valor separado opcional que no empiece con `-` (cubre `-c clave=valor`, `-C dir`), pero exige que el token inmediato posterior sea `push` — por eso `git stash push` (con o sin `-C dir` antes) nunca matchea: `stash` no puede ser consumido como argumento de una opción que no está presente, y de estarlo, deja de haber un `push` inmediato.
 3. `--dry-run` en el comando ⇒ `exit 0`. `GATE_SKIP=1` presente ⇒ `exit 0` (override visible).
 4. Sin `.gate/baseline.json` ⇒ `exit 0`.
 5. Resolver rama destino: refspec explícito del comando (`git push <remote> <rama>`), si no
@@ -161,8 +161,11 @@ Falsos positivos/negativos conocidos (aceptados, CI es la red final):
 | `git add . && git commit -m x && git push` | **detectado** | el regex ancla en `;`/`&`/`\|` |
 | `git push --force origin dev` | **detectado y denegado** | `--force` no exime |
 | `git push origin feat/x` | permitido | rama no protegida |
-| `git -c foo=bar push origin dev` | detectado | el regex tolera flags entre `git` y `push` |
-| `echo "git push"` / heredoc con `git push` | **falso positivo** | deny informativo, override disponible |
+| `git -c foo=bar push origin dev` | **detectado** (deny si rama protegida) | el grupo de opciones globales admite un token de valor separado (`-c clave=valor`, `-C dir`, en general `-X valor`) entre `git` y `push` |
+| `git -C dir push origin dev` | **detectado** (deny si rama protegida) | mismo mecanismo; `-C` consume `dir` como argumento y `push` sigue siendo el token inmediato exigido |
+| `git -C ../otro-repo push origin dev` | **detectado** (deny si rama protegida) | limitación aceptada: el guard evalúa el repo de la **sesión** (`$CLAUDE_PROJECT_DIR`), no el repo apuntado por `-C`; CI del repo real queda como red final |
+| `git stash push` / `git -C dir stash push` | permitido | `stash` no empieza con `-`, no hay grupo de opciones que lo consuma como argumento, y `push` deja de ser el token inmediato tras `git`+opciones — nunca matchea |
+| `echo "git push origin dev"` | **no matchea**: el ancla de inicio/encadenamiento evita el falso positivo | `git` aparece dentro de la cadena de `echo`, no en posición de inicio de comando ni tras `;`/`&`/`\|` — el allow es el comportamiento correcto, no un hallazgo pendiente |
 | comando con `\"` escapadas que rompe el `sed` | **falso negativo** (falla abierto) | limitación heredada de `git-guard.sh` |
 | `git push` a un remote no protegido con rama `dev` | denegado | el guard mira la rama, no el remote |
 

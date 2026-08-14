@@ -1,53 +1,54 @@
 # Tasks: v0.4.0 — El gate imposible de ignorar
 
-> ⛔ **BLOQUEADO**: esta implementación NO arranca hasta que Rodrigo revise `design.md`,
-> en particular las 3 decisiones abiertas listadas al final del design (gate-run.sh como
-> 5ª pieza, formato del override GATE_SKIP=1, y si doctor debe marcar el uso de GATE_SKIP en
-> last-run.json). Las tareas marcadas ⚠ dependen directamente de esas decisiones y pueden
-> cambiar de forma o desaparecer según la respuesta de Rodrigo.
+> ✅ **DESBLOQUEADO** — Rodrigo resolvió las 3 decisiones abiertas del design:
+> 1. `gate-run.sh` ENTRA como 5ª pieza vendoreada.
+> 2. Override `GATE_SKIP=1` visible/auditable: SÍ (substring literal en el comando).
+> 3. Auditoría de skips en `doctor`: DEUDA para v0.5.0 (NO en esta release; ver tarea 5.8).
+> 4. Ruta de los hooks: en el PLUGIN viven en `scripts/hooks/gate-*.sh`; su destino vendoreado
+>    en repos gateados es `.claude/hooks/gate-*.sh`. Las tareas de Batch 2 usan la ruta del
+>    plugin (`scripts/hooks/`); Batch 3 (`commands/init.md`/`upgrade.md`) es responsable de
+>    vendorearlos a `.claude/hooks/` en el repo consumidor.
 >
-> Nota de consistencia a resolver junto con la revisión: la tabla "Cambios por archivo" del
-> design nombra los hooks en `scripts/hooks/gate-*.sh`, pero el resto del design (shapes de
-> `settings.json`, spec de gate-hooks, sección de rollback) usa `.claude/hooks/gate-*.sh`.
-> Las tareas de abajo siguen `.claude/hooks/` por ser la ruta consistente con el contrato de
-> `settings.json` — confirmar con Rodrigo antes de implementar.
+> Batches 1 y 2 implementados y verificados manualmente (ver checkboxes). Batches 3-5 quedan
+> pendientes para una sesión posterior.
 
 ## Batch 1: Scripts nuevos — gate-status.sh y gate-run.sh
 
-- [ ] 1.1 Crear `scripts/gate-status.sh`: guard por ausencia de `.gate/baseline.json` (cero
+- [x] 1.1 Crear `scripts/gate-status.sh`: guard por ausencia de `.gate/baseline.json` (cero
       output, `exit 0`). — *gate-status: Requirement "Guard por ausencia de baseline"*
-- [ ] 1.2 Implementar conteo por herramienta (`grep -c ... || true`, guard `if [ -f ]` explícito,
+- [x] 1.2 Implementar conteo por herramienta (`grep -c ... || true`, guard `if [ -f ]` explícito,
       nunca `[ -f ] && VAR=`) para PHPStan/Psalm/PHPMD/Deptrac según perfil activo (medida = 4
       filas, landing = solo Psalm). — *gate-status: "Tablero de tres columnas", escenarios
       "Perfil medida completo" y "Perfil landing solo Psalm"*
-- [ ] 1.3 Columna "realidad" fija en `requiere analisis` para las 4 herramientas; el script
+- [x] 1.3 Columna "realidad" fija en `requiere analisis` para las 4 herramientas; el script
       MUST NOT ejecutar ninguna herramienta de análisis. — *gate-status: "Tablero de tres
       columnas"*
-- [ ] 1.4 Lógica "SE PUEDE APRETAR": disparar cuando `en_archivo < congelado` para alguna
+- [x] 1.4 Lógica "SE PUEDE APRETAR": disparar cuando `en_archivo < congelado` para alguna
       herramienta, o cuando `.gate/last-run.json` trae conteos menores a los congelados.
       — *gate-status: "Detección de SE PUEDE APRETAR", escenarios "Archivo de baseline se
       achicó" y "Sin evidencia de mejora"*
-- [ ] 1.5 Columna versión: `baseline.plugin` (vendoreado) vs
+- [x] 1.5 Columna versión: `baseline.plugin` (vendoreado) vs
       `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (disponible), marca ⚠ si difieren; si
       `CLAUDE_PLUGIN_ROOT` no está definida, omitir columna sin fallar. — *gate-status:
       "Versión vendoreada vs disponible", escenario "Drift de versión"*
-- [ ] 1.6 Sección fecha del último gate: leer `.gate/last-run.json`; sin archivo → "Ultimo
+- [x] 1.6 Sección fecha del último gate: leer `.gate/last-run.json`; sin archivo → "Ultimo
       gate: sin registro (corre /release-gate:run)"; commit distinto al HEAD → advertencia de
       evidencia vieja. — *gate-status: "Fecha del último gate en el tablero", escenarios "Sin
       evidencia previa" y "Evidencia desactualizada"*
-- [ ] 1.7 Cerrar `gate-status.sh` con `set -euo pipefail`, `cd "$(dirname "$0")/.."`, texto
+- [x] 1.7 Cerrar `gate-status.sh` con `set -euo pipefail`, `cd "$(dirname "$0")/.."`, texto
       plano a stdout, `exit 0` siempre. Verificar presupuesto <300ms sin overhead de Claude
       Code. — *gate-status: "Presupuesto de tiempo", escenario "Baseline grande no re-analiza"*
-- [ ] 1.8 ⚠ Crear `scripts/gate-run.sh`: correr `gate-check.sh` intacto (sin modificarlo),
+- [x] 1.8 ⚠ Crear `scripts/gate-run.sh`: correr `gate-check.sh` intacto (sin modificarlo),
       capturar su exit code, escribir siempre `.gate/last-run.json` (aprobado o bloqueado) con
       schema `{schema, fecha, commit, arbol_limpio, veredicto, perfil, plugin, conteos}`, y
       propagar el exit code original. — *gate-status: "`.gate/last-run.json` — escritura y
       ciclo de vida", escenarios "Corrida aprobada escribe evidencia" y "Corrida bloqueada
-      también escribe evidencia"*. Condicionada a la decisión abierta #1 de Rodrigo (¿se
-      acepta como 5ª pieza vendoreada?).
+      también escribe evidencia"*. Resuelto por Rodrigo: SÍ se acepta como 5ª pieza vendoreada.
 - [ ] 1.9 Agregar `.gate/last-run.json` a `.gitignore` del repo consumidor. — *gate-status:
-      "`.gate/last-run.json` — escritura y ciclo de vida" (SHALL estar en .gitignore)*
-- [ ] 1.10 Verificación manual de cierre de batch: correr `gate-status.sh` en pos-llantera
+      "`.gate/last-run.json` — escritura y ciclo de vida" (SHALL estar en .gitignore)*.
+      NO ejecutable en este batch: requiere editar `commands/init.md`/`commands/upgrade.md`
+      (Batch 3, fuera del alcance de este agente). Queda pendiente para Batch 3.
+- [x] 1.10 Verificación manual de cierre de batch: correr `gate-status.sh` en pos-llantera
       (903 phpstan) y medir <300ms; correr en un repo sin `.gate/baseline.json` y confirmar
       output vacío + exit 0; simular archivo de baseline achicado y confirmar aviso "SE PUEDE
       APRETAR"; correr `gate-run.sh` en aprobado y bloqueado y confirmar `last-run.json` en
@@ -56,50 +57,65 @@
 
 ## Batch 2: Plantillas de hooks + bloque CLAUDE.md
 
-- [ ] 2.1 Crear `.claude/hooks/gate-session-status.sh`: registrable bajo `SessionStart` sin
-      `matcher`, invoca `scripts/gate-status.sh`, termina siempre `exit 0`; sin
-      `.gate/baseline.json` produce cero output (delegado al guard de gate-status.sh).
-      — *gate-hooks: "Hook SessionStart — shape y guard", escenarios "Sesión en repo gateado"
-      y "Sesión en repo sin gate"*
-- [ ] 2.2 Crear `.claude/hooks/gate-push-guard.sh` — paso 1: leer payload de stdin, extraer
-      `tool_input.command` con `sed` (no `jq`, igual que `git-guard.sh`). — *gate-hooks: "Hook
-      PreToolUse — descarte rápido en el hot path"*
-- [ ] 2.3 Descarte inmediato por regex antes de tocar disco: solo continúa si el comando
+> Nota de ubicación (Decisión ratificada #4 de Rodrigo): en el PLUGIN los hooks viven como
+> `scripts/hooks/gate-session-status.sh` y `scripts/hooks/gate-push-guard.sh`; su destino
+> vendoreado en repos gateados (tarea de Batch 3, `commands/init.md`/`upgrade.md`) es
+> `.claude/hooks/gate-*.sh`. Las tareas de abajo se implementaron en la ruta del PLUGIN.
+
+- [x] 2.1 Crear `scripts/hooks/gate-session-status.sh` (fuente en el plugin; destino vendoreado
+      `.claude/hooks/gate-session-status.sh`): registrable bajo `SessionStart` sin `matcher`,
+      invoca `scripts/gate-status.sh`, termina siempre `exit 0`; sin `.gate/baseline.json`
+      produce cero output (delegado al guard de gate-status.sh). — *gate-hooks: "Hook
+      SessionStart — shape y guard", escenarios "Sesión en repo gateado" y "Sesión en repo sin
+      gate"*
+- [x] 2.2 Crear `scripts/hooks/gate-push-guard.sh` (fuente en el plugin; destino vendoreado
+      `.claude/hooks/gate-push-guard.sh`) — paso 1: leer payload de stdin, extraer
+      `tool_input.command` con `sed` (no `jq`, réplica del patrón `git-guard.sh` descrito en el
+      design — `git-guard.sh` no está en este repo, no se pudo comparar byte a byte). —
+      *gate-hooks: "Hook PreToolUse — descarte rápido en el hot path"*
+- [x] 2.3 Descarte inmediato por regex antes de tocar disco: solo continúa si el comando
       matchea `(^|[;&|][[:space:]]*)git([[:space:]]+-[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)`.
       — *gate-hooks: "Hook PreToolUse — descarte rápido...", escenarios "Comando Bash no
       relacionado" y "Push encadenado con otros comandos"*
-- [ ] 2.4 ⚠ Orden de excepciones tras detectar push: (1) `--dry-run` → exit 0; (2)
+- [x] 2.4 Orden de excepciones tras detectar push: (1) `--dry-run` → exit 0; (2)
       `GATE_SKIP=1` presente en el comando → exit 0 (override visible en transcript); (3) sin
       `.gate/baseline.json` → exit 0; (4) rama destino ≠ `main`/`dev` → exit 0. — *gate-hooks:
       "Orden de descarte y excepciones", escenarios "Push a rama no protegida", "Override
-      explícito", "Repo sin baseline"*. Condicionada a la decisión abierta #2 de Rodrigo
-      (formato/existencia de `GATE_SKIP=1`).
-- [ ] 2.5 Resolver rama destino: refspec explícito del comando si está, si no
+      explícito", "Repo sin baseline"*. Resuelto por Rodrigo: `GATE_SKIP=1` como prefijo/substring
+      literal del comando, visible/auditable en el transcript.
+- [x] 2.5 Resolver rama destino: refspec explícito del comando si está, si no
       `git branch --show-current`; deny (JSON `permissionDecision: deny`, nunca exit code) si
       no hay `.gate/last-run.json` con `veredicto == APROBADO`, `commit == HEAD` y
       `arbol_limpio`; mensaje de deny con motivo exacto (sin evidencia / bloqueado / commit
       viejo / árbol sucio) y fix `/release-gate:run`. — *gate-hooks: "Deny — evidencia
       insuficiente", escenarios "Evidencia verde y vigente", "Sin evidencia previa",
       "Evidencia de un commit viejo", "Fuerza no exime"*
-- [ ] 2.6 Formato exacto de bloqueo:
+- [x] 2.6 Formato exacto de bloqueo:
       `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"<mensaje>"}}`
       seguido de `exit 0`. — *gate-hooks: "Formato de bloqueo", escenario "JSON de deny bien
       formado"*
-- [ ] 2.7 Validar contra la tabla de falsos positivos/negativos aceptados del design (echo con
+- [x] 2.7 Validar contra la tabla de falsos positivos/negativos aceptados del design (echo con
       `git push` literal, comillas escapadas que rompen el sed, push a remote no protegido con
       rama `dev`) — no requiere código nuevo, es criterio de aceptación del script ya escrito.
       — *gate-hooks: "Falsos positivos y negativos aceptados", escenario "Falso positivo de
-      echo"*
-- [ ] 2.8 Crear `plantillas/claude-md-bloque.md` con el bloque delimitado por
+      echo"*. **Hallazgo de verificación**: con el regex EXACTO del design, `echo "git push
+      origin dev"` y `git -c foo=bar push origin dev` NO se detectan como push (ver sección de
+      desvíos del reporte de apply) — el regex ancla `git` a inicio de comando o a un operador
+      de shell, y el grupo de flags no admite pares `-x valor`. La tabla de falsos
+      positivos/negativos del design asume que SÍ se detectan. Implementado el regex tal cual
+      el design lo especifica (fidelidad al spec); discrepancia reportada para revisión de
+      Rodrigo, no corregida unilateralmente.
+- [x] 2.8 Crear `plantillas/claude-md-bloque.md` con el bloque delimitado por
       `<!-- release-gate:inicio -->` / `<!-- release-gate:fin -->` y las 4 reglas de doctrina
       (baseline no se edita, ratchet aprieta, scripts no se editan a mano, push sin corrida
       verde queda bloqueado). — *gate-doctrina: "Contenido del bloque", escenario "Bloque
       instalado en repo nuevo"*
-- [ ] 2.9 Verificación manual de cierre de batch: batería de strings de la tabla de falsos
+- [x] 2.9 Verificación manual de cierre de batch: batería de strings de la tabla de falsos
       positivos/negativos contra `gate-push-guard.sh` sin invocar Claude (comando no-push,
       push encadenado, `--dry-run`, `GATE_SKIP=1`, `--force`, rama no protegida, `echo "git
       push"`, comando con comillas escapadas); medir tiempo de descarte de un comando no-push
-      (<100ms). `bash scripts/validate-manifest.sh` no debe fallar.
+      (<100ms, medido ~10ms). `bash scripts/validate-manifest.sh` no debe fallar (pasa, sin
+      tocar el manifiesto en este batch).
 
 ## Batch 3: Comandos init/upgrade/doctor + run.md
 
@@ -202,10 +218,10 @@
 - [ ] 5.7 Rodar `/release-gate:doctor` en cada repo tras su upgrade y confirmar cero hallazgos
       sobre las piezas nuevas (checksum + presencia). — *gate-vendoring: "Custodia de doctor —
       checksum" y "— presencia"; gate-doctrina: "Bloque presente y vigente"*
-- [ ] 5.8 ⚠ Si Rodrigo confirmó la decisión abierta #3 (doctor marca uso de `GATE_SKIP` en
-      `last-run.json`): agregar el campo al schema, a `gate-run.sh` y al chequeo de `doctor`
-      antes de esta verificación end-to-end. Si no la confirmó, dejar la deuda anotada en
-      `docs/referencia.md` tal como está en el design ("Riesgos residuales").
+- [x] 5.8 N/A — DEUDA para v0.5.0 (decisión ratificada por Rodrigo): `doctor` NO audita el uso
+      de `GATE_SKIP` en esta release. `gate-run.sh` no agrega el campo al schema de
+      `last-run.json`. La deuda queda anotada en `docs/referencia.md` (Batch 4, pendiente) tal
+      como está en el design, sección "Riesgos residuales".
 - [ ] 5.9 Verificación de cierre final: `bash scripts/validate-manifest.sh` en 0.4.0 sobre el
       plugin ya instalado en los repos actualizados; correr los 7 repos por CI (red final) y
       confirmar que sigue en verde sin cambios de baseline salvo el campo `plugin`.

@@ -12,16 +12,23 @@ tabla de estado. Diagnosticás primero; no arregles nada sin preguntar.
    `${CLAUDE_PLUGIN_ROOT}/docs/referencia.md`). Registrá también `plugin`
    (versión con la que se vendoreó) si está.
 2. **Scripts presentes y ejecutables**: `scripts/gate-check.sh`,
-   `scripts/gate-headers.sh`, `scripts/gate-lighthouse.sh` y `scripts/gate-links.php`
-   — los cuatro en **ambos** perfiles desde la v0.3.0; los `.sh` con permiso de
-   ejecución. Si el perfil es `medida` y falta `gate-links.php`, el repo se
-   vendoreó con un plugin < 0.3.0: el gate nuevo lo va a exigir → mandá a
+   `scripts/gate-headers.sh`, `scripts/gate-lighthouse.sh`, `scripts/gate-links.php`,
+   `scripts/gate-status.sh`, `scripts/gate-run.sh`,
+   `.claude/hooks/gate-session-status.sh` y `.claude/hooks/gate-push-guard.sh`
+   — todos en **ambos** perfiles; los `.sh` con permiso de ejecución. Si el
+   perfil es `medida` y falta `gate-links.php`, el repo se vendoreó con un
+   plugin < 0.3.0; si faltan `gate-status.sh`/`gate-run.sh`/los hooks, se
+   vendoreó con un plugin < 0.4.0: en cualquiera de los dos casos → mandá a
    `/release-gate:upgrade`.
 3. **Drift contra el plugin** (el check estrella): compará checksums —
 
    ```bash
    shasum scripts/gate-check.sh "${CLAUDE_PLUGIN_ROOT}/scripts/gate-check-<perfil>.sh"
    shasum scripts/gate-headers.sh "${CLAUDE_PLUGIN_ROOT}/scripts/gate-headers.sh"
+   shasum scripts/gate-status.sh "${CLAUDE_PLUGIN_ROOT}/scripts/gate-status.sh"
+   shasum scripts/gate-run.sh "${CLAUDE_PLUGIN_ROOT}/scripts/gate-run.sh"
+   shasum .claude/hooks/gate-session-status.sh "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/gate-session-status.sh"
+   shasum .claude/hooks/gate-push-guard.sh "${CLAUDE_PLUGIN_ROOT}/scripts/hooks/gate-push-guard.sh"
    # ... ídem lighthouse y gate-links.php (ambos perfiles)
    ```
 
@@ -40,6 +47,22 @@ tabla de estado. Diagnosticás primero; no arregles nada sin preguntar.
    `autoload-dev.psr-4` — sin eso las reglas no cargan y el gate pasa por
    omisión, que es el peor de los mundos. Las reglas (`phpstan-rules/*.php`)
    también se comparan por checksum contra el plugin: son motor, no config.
+
+3c. **Piezas de v0.4.0 — verificación por presencia** (no checksum: son
+   archivos que el repo edita legítimamente):
+   - Entradas `SessionStart` y `PreToolUse`/`Bash` en `.claude/settings.json`
+     que invoquen `gate-session-status.sh` / `gate-push-guard.sh`. Si falta
+     alguna, reportalo como hallazgo — el gate deja de imponerse aunque los
+     scripts estén vendoreados.
+   - Confirmá que los hooks preexistentes ajenos al gate (otros matchers de
+     `PostToolUse`, otras entradas de `PreToolUse`/`SessionStart`) siguen
+     intactos: si `upgrade` los pisó, es un bug del comando, no del repo.
+   - Bloque delimitado `<!-- release-gate:inicio -->` / `<!-- release-gate:fin -->`
+     en `CLAUDE.md`, con contenido igual al de
+     `${CLAUDE_PLUGIN_ROOT}/plantillas/claude-md-bloque.md` vigente. Ausente o
+     desactualizado → hallazgo.
+   - Línea `.gate/last-run.json` en `.gitignore`. Ausente → hallazgo, sugerí
+     agregarla (evita commitear evidencia local por desarrollador).
 
 4. **Herramientas**: `vendor/bin/pint` existe; `vendor/bin/phpstan` +
    `phpstan-baseline.neon` (solo medida); `vendor/bin/psalm` (ambos);
@@ -64,6 +87,26 @@ tabla de estado. Diagnosticás primero; no arregles nada sin preguntar.
    saltea. Snippet para arreglarlo: `${CLAUDE_PLUGIN_ROOT}/docs/referencia.md`.
 6. **El gate pasa**: si todo lo anterior está sano, corré `./scripts/gate-check.sh`
    y reportá el veredicto.
+
+## Archivos custodiados
+
+Prosa, no manifiesto JSON declarativo — coherente con el resto del comando.
+
+**Por checksum contra `${CLAUDE_PLUGIN_ROOT}`** (idénticos entre repos, dato
+del proyecto va al baseline, no al script):
+
+- `scripts/gate-check.sh` (contra `gate-check-<perfil>.sh`)
+- `scripts/gate-headers.sh`, `scripts/gate-lighthouse.sh`, `scripts/gate-links.php`
+- `scripts/gate-status.sh`, `scripts/gate-run.sh`
+- `.claude/hooks/gate-session-status.sh`, `.claude/hooks/gate-push-guard.sh`
+- Plantillas (`psalm.xml`, `phpmd.xml`, `deptrac.yaml`) y `phpstan/Rules/*.php`
+
+**Por presencia** (el repo edita legítimamente el resto del archivo; no tiene
+sentido un checksum de archivo completo):
+
+- Bloque delimitado de doctrina en `CLAUDE.md`
+- Entradas `SessionStart` y `PreToolUse`/`Bash` en `.claude/settings.json`
+- Línea `.gate/last-run.json` en `.gitignore`
 
 ## Salida
 

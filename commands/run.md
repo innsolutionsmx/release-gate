@@ -6,17 +6,23 @@ Corré el Release Gate de este repo e interpretá el resultado.
 
 ## Guardas
 
-- Si no existe `.gate/baseline.json` o `scripts/gate-check.sh`: el gate no está
+- Si no existe `.gate/baseline.json` o `scripts/gate-run.sh`: el gate no está
   instalado — ofrecé `/release-gate:init` y frená.
 
 ## Correr
 
 ```bash
-./scripts/gate-check.sh
+./scripts/gate-run.sh
 ```
 
-Mostrá la salida completa. Si termina en **✓ GATE APROBADO**, listo — no inventes
-trabajo.
+`gate-run.sh` corre `gate-check.sh` intacto y de paso escribe
+`.gate/last-run.json` con la evidencia de esta corrida — aprobada o
+bloqueada, siempre. Es la evidencia que exige `.claude/hooks/gate-push-guard.sh`
+antes de dejar pasar un `git push` a `dev`/`main`: sin correr este comando
+después del último commit, el push queda bloqueado.
+
+Mostrá la salida completa (es la de `gate-check.sh`, sin modificar). Si
+termina en **✓ GATE APROBADO**, listo — no inventes trabajo.
 
 ## Si bloquea: interpretar y guiar
 

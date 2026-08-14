@@ -78,8 +78,13 @@ Verificá versión de cada binario instalado antes de seguir.
 
 Scripts, desde `${CLAUDE_PLUGIN_ROOT}/scripts/`: `gate-check-<perfil>.sh` →
 `scripts/gate-check.sh` (pisa el viejo), y los demás según `init` —
-`gate-headers.sh`, `gate-lighthouse.sh` y `gate-links.php`, los tres en **ambos**
-perfiles desde la v0.3.0. `chmod +x` a los `.sh`. NO los edites.
+`gate-headers.sh`, `gate-lighthouse.sh`, `gate-links.php`, `gate-status.sh` y
+`gate-run.sh`, los cinco en **ambos** perfiles desde la v0.4.0 (los tres
+primeros ya desde la v0.3.0). `chmod +x` a los `.sh`. NO los edites.
+
+Hooks, desde `${CLAUDE_PLUGIN_ROOT}/scripts/hooks/` a `.claude/hooks/`:
+`gate-session-status.sh` y `gate-push-guard.sh` — pisan versiones anteriores
+propias del gate igual que los scripts de arriba. `chmod +x`.
 
 Plantillas, desde `${CLAUDE_PLUGIN_ROOT}/plantillas/`, solo las del perfil:
 
@@ -90,6 +95,37 @@ Plantillas, desde `${CLAUDE_PLUGIN_ROOT}/plantillas/`, solo las del perfil:
 
 Si alguno de esos archivos ya existe con contenido distinto, **no lo pises**:
 mostrá el diff y preguntá.
+
+## 3b. Bloque de doctrina y `settings.json` — re-propagar sin perder estado ajeno
+
+Mismas piezas que instala `/release-gate:init` (bloque de `CLAUDE.md` y las
+dos entradas de hooks en `.claude/settings.json`), pero acá **ya pueden
+existir de una versión anterior** — el objetivo es dejarlas al día sin tocar
+nada ajeno al gate.
+
+### Bloque de `CLAUDE.md`
+
+- **Con marcadores `<!-- release-gate:inicio -->` / `<!-- release-gate:fin -->`
+  presentes**: reemplazá SOLO el contenido entre ellos por la versión vigente
+  de `${CLAUDE_PLUGIN_ROOT}/plantillas/claude-md-bloque.md`. El resto del
+  archivo (antes y después del bloque) queda byte a byte igual.
+- **Sin marcadores**: agregá el bloque completo al final, igual que `init`,
+  sin eliminar contenido existente del repo.
+
+### `.gate/last-run.json` en `.gitignore`
+
+Si la línea ya está, no la dupliques. Si falta, agregala.
+
+### `settings.json`
+
+Mismo algoritmo de 6 pasos que `/release-gate:init` §2c: detección de
+idempotencia por subcadena (`gate-session-status.sh` / `gate-push-guard.sh`),
+*append* a `SessionStart`/`PreToolUse` existentes sin reemplazar el array,
+preservación estricta de `enabledPlugins`, `extraKnownMarketplaces` y hooks
+ajenos al gate (caso testigo: los dos matchers de `PostToolUse` de
+pos-llantera). Verificación post-merge: JSON válido + claves previas
+presentes. **Correr `upgrade` una segunda vez no debe duplicar nada** — es la
+misma detección de idempotencia que usa `init`.
 
 ## 4. Tocar el `composer.json` del repo (solo medida)
 

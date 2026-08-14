@@ -32,7 +32,7 @@ PAYLOAD="$(cat 2>/dev/null || true)"
 CMD=$(printf '%s' "$PAYLOAD" | sed -nE 's/.*"command"[[:space:]]*:[[:space:]]*"((\\.|[^"\\])*)".*/\1/p')
 
 # ── Paso 2: descarte inmediato por regex, ANTES de cualquier I/O a disco ──
-if ! printf '%s' "$CMD" | grep -Eq '(^|[;&|][[:space:]]*)git([[:space:]]+-[^[:space:]]+)*[[:space:]]+push([[:space:]]|$)'; then
+if ! printf '%s' "$CMD" | grep -Eq '(^|[;&|][[:space:]]*)git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+push([[:space:]]|$)'; then
     exit 0
 fi
 

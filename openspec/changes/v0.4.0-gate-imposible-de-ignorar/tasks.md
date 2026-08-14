@@ -9,8 +9,10 @@
 >    plugin (`scripts/hooks/`); Batch 3 (`commands/init.md`/`upgrade.md`) es responsable de
 >    vendorearlos a `.claude/hooks/` en el repo consumidor.
 >
-> Batches 1 y 2 implementados y verificados manualmente (ver checkboxes). Batches 3-5 quedan
-> pendientes para una sesión posterior.
+> Batches 1, 2, 3 y 4 implementados y verificados manualmente (ver checkboxes). Batch 5
+> (verificación end-to-end sobre los repos testigo reales + bump del plugin instalado por
+> Rodrigo) queda pendiente para una sesión posterior — requiere `/plugin` + reinicio de
+> Rodrigo y tocar los 7 repos gateados reales, fuera del alcance de un agente.
 
 ## Batch 1: Scripts nuevos — gate-status.sh y gate-run.sh
 
@@ -44,10 +46,10 @@
       propagar el exit code original. — *gate-status: "`.gate/last-run.json` — escritura y
       ciclo de vida", escenarios "Corrida aprobada escribe evidencia" y "Corrida bloqueada
       también escribe evidencia"*. Resuelto por Rodrigo: SÍ se acepta como 5ª pieza vendoreada.
-- [ ] 1.9 Agregar `.gate/last-run.json` a `.gitignore` del repo consumidor. — *gate-status:
+- [x] 1.9 Agregar `.gate/last-run.json` a `.gitignore` del repo consumidor. — *gate-status:
       "`.gate/last-run.json` — escritura y ciclo de vida" (SHALL estar en .gitignore)*.
-      NO ejecutable en este batch: requiere editar `commands/init.md`/`commands/upgrade.md`
-      (Batch 3, fuera del alcance de este agente). Queda pendiente para Batch 3.
+      Cerrado en Batch 3: `commands/init.md` §2c agrega la línea en repo nuevo,
+      `commands/upgrade.md` §3b la agrega si falta (sin duplicar).
 - [x] 1.10 Verificación manual de cierre de batch: correr `gate-status.sh` en pos-llantera
       (903 phpstan) y medir <300ms; correr en un repo sin `.gate/baseline.json` y confirmar
       output vacío + exit 0; simular archivo de baseline achicado y confirmar aviso "SE PUEDE
@@ -119,10 +121,10 @@
 
 ## Batch 3: Comandos init/upgrade/doctor + run.md
 
-- [ ] 3.1 Modificar `commands/init.md` §2: vendorear `gate-status.sh`, `gate-run.sh` y los 2
+- [x] 3.1 Modificar `commands/init.md` §2: vendorear `gate-status.sh`, `gate-run.sh` y los 2
       hooks a `.claude/hooks/` con `chmod +x` sobre los `.sh`. — *gate-vendoring: "`init`
       instala las piezas nuevas", escenario "Init en repo limpio"*
-- [ ] 3.2 Agregar `commands/init.md` §2c (nuevo): algoritmo de merge de `settings.json`
+- [x] 3.2 Agregar `commands/init.md` §2c (nuevo): algoritmo de merge de `settings.json`
       ejecutado por Claude con Read+Edit — sin `.claude/` crea directorio+archivo solo con
       `hooks`; con archivo sin `hooks` agrega la clave sin tocar `enabledPlugins`/
       `extraKnownMarketplaces`; detección de idempotencia por subcadena
@@ -131,66 +133,79 @@
       existe crea la entrada nueva sin tocar la de `git-guard`; verificación post-merge con
       `php -r json_decode` + claves previas presentes. — *gate-vendoring: "`init` instala las
       piezas nuevas"; "Merge idempotente ejecutado por Claude"*
-- [ ] 3.3 `commands/init.md` §2c: instalar bloque de doctrina en `CLAUDE.md` (agregar completo
+- [x] 3.3 `commands/init.md` §2c: instalar bloque de doctrina en `CLAUDE.md` (agregar completo
       con marcadores si no existen, sin eliminar contenido previo del repo) y agregar
       `.gate/last-run.json` a `.gitignore`. — *gate-doctrina: "CLAUDE.md sin bloque previo";
       gate-vendoring: "`init` instala las piezas nuevas"*
-- [ ] 3.4 Modificar `commands/upgrade.md` §3: re-vendorear las 5 piezas pisando versiones
+- [x] 3.4 Modificar `commands/upgrade.md` §3: re-vendorear las 5 piezas pisando versiones
       anteriores de scripts propios; reemplazo idempotente del bloque `CLAUDE.md` solo entre
       marcadores (resto del archivo intacto); mismo algoritmo de merge aditivo de
-      `settings.json` que init (§3.2); MUST NOT re-medir baseline existente ni eliminar hooks/
-      plugins/marketplaces preexistentes. — *gate-vendoring: "`upgrade` propaga sin perder
-      estado ajeno", escenarios "Upgrade preserva hooks de la casa (pos-llantera)", "Upgrade
-      en repo sin bloque hooks (landing-crb, landing-urn)", "Upgrade en repo con hooks +
-      plugins declarados (landing-cursos-urn)", "Segunda corrida no duplica"; gate-doctrina:
-      "Upgrade reemplaza el bloque sin tocar el resto del archivo"; gate-vendoring: "Ausencia
-      de re-medición", escenario "Upgrade no re-mide baseline existente"*
-- [ ] 3.5 Modificar `commands/doctor.md` §3: sumar checksum (`shasum` contra
+      `settings.json` que init (§3.2, ahora §3b de upgrade); MUST NOT re-medir baseline
+      existente ni eliminar hooks/plugins/marketplaces preexistentes. — *gate-vendoring:
+      "`upgrade` propaga sin perder estado ajeno", escenarios "Upgrade preserva hooks de la
+      casa (pos-llantera)", "Upgrade en repo sin bloque hooks (landing-crb, landing-urn)",
+      "Upgrade en repo con hooks + plugins declarados (landing-cursos-urn)", "Segunda corrida
+      no duplica"; gate-doctrina: "Upgrade reemplaza el bloque sin tocar el resto del archivo";
+      gate-vendoring: "Ausencia de re-medición", escenario "Upgrade no re-mide baseline
+      existente"*
+- [x] 3.5 Modificar `commands/doctor.md` §3: sumar checksum (`shasum` contra
       `${CLAUDE_PLUGIN_ROOT}`) de `gate-status.sh`, `gate-run.sh` y los 2 hooks a la lista
       existente. — *gate-vendoring: "Custodia de doctor — checksum", escenario "Script editado
       a mano"*
-- [ ] 3.6 Agregar `commands/doctor.md` §3c (nuevo): verificación por presencia (no checksum) de
+- [x] 3.6 Agregar `commands/doctor.md` §3c (nuevo): verificación por presencia (no checksum) de
       las 2 entradas de hooks en `settings.json`, del bloque delimitado en `CLAUDE.md`, y de la
       línea `.gate/last-run.json` en `.gitignore`; confirmar que hooks preexistentes ajenos
       siguen intactos. — *gate-vendoring: "Custodia de doctor — presencia", escenarios "Entrada
       de settings.json ausente" y "Línea de .gitignore ausente"; gate-doctrina: "Verificación
       de presencia por doctor", escenarios "Bloque ausente" y "Bloque presente y vigente"*
-- [ ] 3.7 Agregar a `commands/doctor.md` una tabla explícita en prosa de archivos custodiados
+- [x] 3.7 Agregar a `commands/doctor.md` una tabla explícita en prosa de archivos custodiados
       (checksum: `gate-check.sh`, `gate-headers.sh`, `gate-lighthouse.sh`, `gate-links.php`,
       `gate-status.sh`, `gate-run.sh`, `.claude/hooks/gate-session-status.sh`,
       `.claude/hooks/gate-push-guard.sh`, plantillas, `phpstan/Rules/*.php`; presencia: bloque
       `CLAUDE.md`, entradas de `settings.json`, línea de `.gitignore`) — sin manifiesto JSON
       declarativo. — *gate-vendoring: "Custodia de doctor — presencia" (SHALL incluir tabla
       explícita)*
-- [ ] 3.8 ⚠ Modificar `commands/run.md`: invocar `./scripts/gate-run.sh` en vez de
+- [x] 3.8 ⚠ Modificar `commands/run.md`: invocar `./scripts/gate-run.sh` en vez de
       `gate-check.sh` directamente. — *gate-status: "`.gate/last-run.json` — escritura y ciclo
       de vida"; consistente con el diagrama del design (`/release-gate:run` → `gate-run.sh`)*.
-      Condicionada a la decisión abierta #1 de Rodrigo.
-- [ ] 3.9 Verificación manual de cierre de batch: sobre copias de los 3 repos testigo
-      (base-project con hooks completos, landing-crb sin clave `hooks`, pos-llantera con
-      `PostToolUse` de 2 matchers) correr el merge de `settings.json` dos veces y confirmar
-      idempotencia (sin duplicados) y que los hooks/plugins ajenos sobreviven intactos; borrar/
-      mutar cada pieza nueva (uno por uno: script, hook, bloque CLAUDE.md, entrada
-      settings.json, línea .gitignore) y confirmar que `doctor` la detecta. Cerrar con
-      `bash scripts/validate-manifest.sh` (`claude plugin validate --strict`).
+      Decisión abierta #1 de Rodrigo resuelta: SÍ, `gate-run.sh` es la 5ª pieza vendoreada.
+- [x] 3.9 Verificación manual de cierre de batch: sobre **fixtures sintéticos** de los 3 casos
+      testigo (base-project con `SessionStart`+`PreToolUse:"Bash"` completos incluyendo
+      `git-guard`, landing-crb sin clave `hooks` con `enabledPlugins`/`extraKnownMarketplaces`,
+      pos-llantera con `PostToolUse` de 2 matchers ajenos) — NO sobre los repos reales, per
+      instrucción explícita — se implementó el algoritmo de 6 pasos en PHP tal cual está escrito
+      en `commands/init.md`/`upgrade.md` y se corrió DOS veces sobre cada fixture. Resultado:
+      cero duplicados en la segunda corrida (detección por subcadena funciona), `git-guard`
+      sigue intacto y el hook nuevo se agrega a SU MISMO array `hooks` (matcher `"Bash"`
+      compartido), `enabledPlugins`/`extraKnownMarketplaces` de landing-crb intactos, los 2
+      matchers de `PostToolUse` de pos-llantera intactos y `SessionStart`/`PreToolUse` nuevos
+      agregados sin tocarlos. JSON válido en las 3 salidas. La mutación pieza-por-pieza contra
+      `doctor` (script/hook/bloque CLAUDE.md/entrada settings.json/línea .gitignore) NO se
+      ejecutó — `doctor.md` es prosa para un futuro Claude interactivo, no hay runner
+      automatizado para simularla sin invocar el comando real; queda para Batch 5 (5.7, sobre
+      repos reales). Cerrado con `bash scripts/validate-manifest.sh` (`claude plugin validate
+      --strict`) → pasa en 0.4.0.
 
 ## Batch 4: docs/referencia.md y bump de versión 0.4.0
 
-- [ ] 4.1 Modificar `docs/referencia.md`: documentar schema de `.gate/last-run.json` (los 7
+- [x] 4.1 Modificar `docs/referencia.md`: documentar schema de `.gate/last-run.json` (los 7
       campos: `schema, fecha, commit, arbol_limpio, veredicto, perfil, plugin, conteos`).
       — *gate-status: "`.gate/last-run.json` — escritura y ciclo de vida"*
-- [ ] 4.2 `docs/referencia.md`: documentar contrato de los 2 hooks (SessionStart sin matcher +
+- [x] 4.2 `docs/referencia.md`: documentar contrato de los 2 hooks (SessionStart sin matcher +
       guard por baseline; PreToolUse/Bash con orden de descarte, deny JSON, tabla de falsos
       positivos/negativos). — *gate-hooks: todos los requirements*
-- [ ] 4.3 `docs/referencia.md`: agregar/actualizar tabla de archivos vendoreados incluyendo las
+- [x] 4.3 `docs/referencia.md`: agregar/actualizar tabla de archivos vendoreados incluyendo las
       5 piezas nuevas y qué operación (init/upgrade/doctor) las toca. — *gate-vendoring:
       "`init` instala las piezas nuevas"; "`upgrade` propaga..."; "Custodia de doctor"*
-- [ ] 4.4 Modificar `.claude-plugin/plugin.json`: bump `version` de `0.3.0` a `0.4.0`.
+- [x] 4.4 Modificar `.claude-plugin/plugin.json`: bump `version` de `0.3.0` a `0.4.0`.
       — *gate-vendoring: contexto general del change (v0.4.0); design "Rollout" (bump antes de
       `/plugin` + reinicio)*
-- [ ] 4.5 Verificación manual de cierre de batch: `bash scripts/validate-manifest.sh`
-      (`claude plugin validate --strict`) debe pasar con el manifiesto en 0.4.0; revisión
-      visual de que `docs/referencia.md` no contradice ninguna de las 4 specs.
+- [x] 4.5 Verificación manual de cierre de batch: `bash scripts/validate-manifest.sh`
+      (`claude plugin validate --strict`) debe pasar con el manifiesto en 0.4.0 → **pasa**
+      (`✅ version: 0.4.0 (semver válido)`, `✅ claude plugin validate --strict: pasa`); revisión
+      visual de que `docs/referencia.md` no contradice ninguna de las 4 specs (gate-status,
+      gate-hooks, gate-vendoring, gate-doctrina) → sin contradicciones, contenido calcado del
+      design.md ratificado.
 
 ## Batch 5: Verificación manual end-to-end en repo testigo
 

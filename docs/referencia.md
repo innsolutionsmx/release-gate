@@ -195,6 +195,141 @@ Notas del schema:
   archivo. La excepción es `deptrac.baseline.yaml`, que `deptrac.yaml` importa
   siempre y debe existir aunque sea con `skip_violations: {}`.
 
+## `.gate/last-run.json` — evidencia de la última corrida
+
+Lo escribe **`scripts/gate-run.sh`**, siempre — corrida aprobada o bloqueada —
+nunca `gate-check.sh` (que sigue leyendo y jamás escribiendo) ni ningún hook.
+Es el ÚNICO punto que produce esta evidencia; el tablero (`gate-status.sh`) y
+el guard de push (`.claude/hooks/gate-push-guard.sh`) la leen, nunca la
+infieren.
+
+```json
+{
+  "schema": 1,
+  "fecha": "2026-08-12T14:31:07-06:00",
+  "commit": "a1b2c3d4e5f6...",
+  "arbol_limpio": true,
+  "veredicto": "APROBADO",
+  "perfil": "medida",
+  "plugin": "0.4.0",
+  "conteos": { "phpstan": 903, "psalm": 0, "phpmd": 0, "deptrac": 0 }
+}
+```
+
+| Campo | Qué es |
+|---|---|
+| `schema` | versión del schema de este archivo (hoy `1`) |
+| `fecha` | timestamp ISO 8601 con offset, del momento de la corrida |
+| `commit` | `git rev-parse HEAD` al momento de correr `gate-run.sh` |
+| `arbol_limpio` | `true` si `git status --porcelain` no reportó nada |
+| `veredicto` | `APROBADO` o `BLOQUEADO`, según el exit code de `gate-check.sh` |
+| `perfil` | leído de `.gate/baseline.json` |
+| `plugin` | leído de `.gate/baseline.json` (versión vendoreada) |
+| `conteos` | conteo por `grep -c` en los archivos de baseline de cada herramienta del perfil activo — mismo conteo que `gate-status.sh`, nunca un re-análisis; fuera de perfil: `null` |
+
+**Va en `.gitignore`** (línea `.gate/last-run.json`): es estado local por
+desarrollador. Commitearlo produce conflictos en cada push y evidencia ajena
+que el guard leería como propia. Tradeoff aceptado: en un clon nuevo no hay
+evidencia, y el primer push a `dev`/`main` exige correr `/release-gate:run` —
+que es exactamente el comportamiento deseado.
+
+## Hooks — `SessionStart` y `PreToolUse`
+
+Dos hooks vendoreados en `.claude/hooks/` (fuente en el plugin:
+`scripts/hooks/gate-*.sh`), registrados en `.claude/settings.json` por
+`/release-gate:init`/`upgrade` (algoritmo de merge documentado en esos
+comandos). Ninguno de los dos corre análisis: ambos solo leen evidencia ya
+escrita, nunca `gate-check.sh` ni ninguna herramienta.
+
+### `gate-session-status.sh` (`SessionStart`, sin `matcher`)
+
+Invoca `scripts/gate-status.sh` y muestra el tablero como contexto de
+sesión. Termina siempre `exit 0`, incluso si algo falla adentro. Sin
+`.gate/baseline.json`: cero output (el guard vive en `gate-status.sh`).
+Presupuesto: menos de 2s de punta a punta.
+
+### `gate-push-guard.sh` (`PreToolUse`, `matcher: "Bash"`)
+
+Corre en el hot path de TODO comando Bash de la sesión — por eso el primer
+paso es un descarte por regex antes de tocar disco (medido ~10ms para un
+comando no-push). Orden de descarte:
+
+1. Extrae `tool_input.command` del payload de stdin con `sed` (no `jq`, mismo
+   patrón que `git-guard.sh`).
+2. Si el comando no matchea un `git push` (con o sin flags entre `git` y
+   `push`, solo o encadenado con `;`/`&&`/`|`), `exit 0` inmediato.
+3. Excepciones explícitas: `--dry-run` en el comando → `exit 0`. `GATE_SKIP=1`
+   presente en el comando → `exit 0` (ver override abajo).
+4. Sin `.gate/baseline.json` → `exit 0` (repo sin gate, nada que exigir).
+5. Resuelve la rama destino (refspec explícito del comando si está; si no,
+   la rama actual). Si no es `main` ni `dev` → `exit 0` (rama no protegida).
+6. Lee `.gate/last-run.json`: si `veredicto == APROBADO`, `commit == HEAD`
+   actual, y `arbol_limpio == true`, deja pasar. Si no, deniega con el motivo
+   exacto (sin evidencia / bloqueado / commit viejo / árbol sucio) vía:
+
+   ```json
+   {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"<mensaje>"}}
+   ```
+
+   El bloqueo es SIEMPRE por ese JSON — el exit code nunca bloquea nada; el
+   script termina con `exit 0` en todos los casos, incluso al denegar.
+
+Falsos positivos/negativos aceptados (CI sigue siendo la red final, esto es
+fricción temprana, no la única barrera):
+
+| Caso | Resultado |
+|---|---|
+| `git add . && git commit -m x && git push` | detectado — el regex ancla en `;`/`&`/`\|` |
+| `git push --force origin dev` | detectado y denegado — `--force` no exime |
+| `git push origin feat/x` | permitido — rama no protegida |
+| `git -c foo=bar push origin dev` | detectado — el regex tolera flags entre `git` y `push` |
+| `echo "git push"` / heredoc con `git push` | falso positivo — deny informativo, override disponible |
+| comando con `\"` escapadas que rompe el `sed` | falso negativo — falla abierto, limitación heredada de `git-guard.sh` |
+| `git push` a un remote no protegido con rama `dev` | denegado — el guard mira la rama, no el remote |
+
+### Override: `GATE_SKIP=1`
+
+Prefijo/substring literal en el comando (ej. `GATE_SKIP=1 git push origin dev`)
+salta el guard con `exit 0`. Es visible y auditable a propósito: queda
+escrito tal cual en el transcript de la sesión — no es una variable de
+entorno silenciosa ni un flag oculto.
+
+⚠️ **Deuda anotada para v0.5.0**: `doctor` NO audita el uso de `GATE_SKIP` en
+esta release, y `gate-run.sh` no agrega el campo al schema de
+`last-run.json`. Si el override se vuelve costumbre, hoy solo se detecta
+revisando transcripts a mano; auditarlo automáticamente queda pendiente.
+
+## Bloque de doctrina en `CLAUDE.md`
+
+`plantillas/claude-md-bloque.md` — delimitado por
+`<!-- release-gate:inicio -->` / `<!-- release-gate:fin -->`. `init` lo
+agrega completo al `CLAUDE.md` del repo (sin borrar contenido previo);
+`upgrade` reemplaza SOLO el contenido entre los marcadores, dejando el resto
+del archivo intacto. Contenido mínimo: el baseline nunca se edita para pasar
+el gate; solo se aprieta con `/release-gate:ratchet`; los scripts
+`scripts/gate-*.sh` no se editan a mano y `doctor` delata cualquier edición;
+un push a `dev`/`main` sin corrida verde del commit actual queda bloqueado
+por el hook.
+
+## Archivos vendoreados — qué instala/custodia cada comando
+
+| Archivo | Custodia en `doctor` | `init` | `upgrade` |
+|---|---|---|---|
+| `scripts/gate-check.sh` (de `gate-check-<perfil>.sh`) | checksum | instala | re-vendorea (pisa) |
+| `scripts/gate-headers.sh` | checksum | instala | re-vendorea |
+| `scripts/gate-lighthouse.sh` | checksum | instala | re-vendorea |
+| `scripts/gate-links.php` | checksum | instala | re-vendorea |
+| `scripts/gate-status.sh` | checksum | instala | re-vendorea |
+| `scripts/gate-run.sh` | checksum | instala | re-vendorea |
+| `.claude/hooks/gate-session-status.sh` | checksum | instala | re-vendorea |
+| `.claude/hooks/gate-push-guard.sh` | checksum | instala | re-vendorea |
+| Plantillas (`psalm.xml`, `phpmd.xml`, `deptrac.yaml`, `phpstan-servicios.neon`) | checksum (reglas propias) | instala | instala si faltan; si difieren, muestra diff y pregunta |
+| `phpstan/Rules/*.php` (medida) | checksum | instala | instala |
+| Entradas `SessionStart`/`PreToolUse` en `.claude/settings.json` | presencia | merge aditivo (algoritmo de 6 pasos) | merge aditivo idempotente (mismo algoritmo) |
+| Bloque delimitado en `CLAUDE.md` | presencia | instala completo | reemplaza solo el contenido entre marcadores |
+| Línea `.gate/last-run.json` en `.gitignore` | presencia | agrega | agrega si falta |
+| `.gate/baseline.json` | — (no vendoreado, es dato del repo) | mide y crea | NO re-mide (salvo `/release-gate:ratchet`) |
+
 ## CI — job `gate`
 
 Job de referencia para `.github/workflows/ci.yml` (junto al job de tests):

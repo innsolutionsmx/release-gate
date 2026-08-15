@@ -202,6 +202,11 @@ y bloquea el merge. Los números congelados viven en `.gate/baseline.json`.
   todo dato del proyecto va al baseline. `/release-gate:doctor` delata cualquier edición.
 - Antes de pushear a `dev`/`main`: `/release-gate:run`. Un push sin corrida verde del commit
   actual queda bloqueado por el hook.
+- Sin el plugin instalado, los scripts corren igual: `./scripts/gate-run.sh` (gate +
+  evidencia) y `./scripts/gate-status.sh` (tablero). El plugin agrega los comandos guiados
+  y se instala una sola vez desde `innsolutionsmx/release-gate`.
+- ¿Primera vez con el gate? Leé (y ofrecele al desarrollador) la guía:
+  https://github.com/innsolutionsmx/release-gate/blob/main/docs/guia-desarrollador.md
 <!-- release-gate:fin -->
 ```
 

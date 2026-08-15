@@ -15,6 +15,8 @@ hoy se congela y solo se permite mejorar.
   plugin; el drift lo custodia `/release-gate:doctor` por checksum.
 
 Concepto completo: [docs/que-es-y-por-que.md](docs/que-es-y-por-que.md).
+¿Trabajás en un repo que ya tiene el gate? Empezá por
+[docs/guia-desarrollador.md](docs/guia-desarrollador.md).
 
 ## Instalación
 

@@ -59,10 +59,20 @@ Desde `${CLAUDE_PLUGIN_ROOT}/scripts/` copiá al repo (creando `scripts/` si fal
 | ambos | `gate-check-<perfil>.sh` | `scripts/gate-check.sh` |
 | ambos | `gate-headers.sh`, `gate-lighthouse.sh` | mismo nombre |
 | ambos | `gate-links.php` | mismo nombre |
+| ambos | `gate-status.sh` | mismo nombre — tablero de estado por conteo, invocado por el hook de sesión |
+| ambos | `gate-run.sh` | mismo nombre — envoltorio que corre `gate-check.sh` intacto y escribe `.gate/last-run.json` |
 
-`chmod +x` a los `.sh`. NO los edites: si un check no aplica, el dato va al
-baseline, no al script. Un script editado a mano es drift y `/release-gate:doctor`
-lo va a delatar.
+Desde `${CLAUDE_PLUGIN_ROOT}/scripts/hooks/` copiá al repo (creando
+`.claude/hooks/` si falta):
+
+| Se copia | Como |
+|---|---|
+| `gate-session-status.sh` | `.claude/hooks/gate-session-status.sh` |
+| `gate-push-guard.sh` | `.claude/hooks/gate-push-guard.sh` |
+
+`chmod +x` a TODOS los `.sh` (los de `scripts/` y los de `.claude/hooks/`). NO
+los edites: si un check no aplica, el dato va al baseline, no al script. Un
+script editado a mano es drift y `/release-gate:doctor` lo va a delatar.
 
 ## 2b. Herramientas y plantillas
 
@@ -73,6 +83,64 @@ PHPMD están en `${CLAUDE_PLUGIN_ROOT}/plantillas/README.md`.
 En **medida** hay un paso que toca el `composer.json` del proyecto: las reglas
 propias necesitan `"Gate\\PHPStan\\": "phpstan/"` en `autoload-dev.psr-4` y un
 `composer dump-autoload`. Mostrale el diff al usuario; no lo hagas en silencio.
+
+## 2c. Hooks, bloque de doctrina y `settings.json`
+
+Esto es lo que hace el gate **imposible de ignorar**: sin esto, los scripts
+quedan vendoreados pero el tablero de sesión y el bloqueo de push no existen.
+
+### Bloque de doctrina en `CLAUDE.md`
+
+Copiá el contenido completo de
+`${CLAUDE_PLUGIN_ROOT}/plantillas/claude-md-bloque.md` (delimitado por
+`<!-- release-gate:inicio -->` / `<!-- release-gate:fin -->`) al final del
+`CLAUDE.md` del repo. Si el repo no tiene `CLAUDE.md`, creálo con solo ese
+bloque. **Nunca borres contenido previo del archivo.**
+
+### `.gate/last-run.json` en `.gitignore`
+
+Agregá la línea `.gate/last-run.json` a `.gitignore` (creá el archivo si no
+existe). Es evidencia local por desarrollador — nunca se commitea.
+
+### Merge de `.claude/settings.json`
+
+Esto lo ejecutás vos con Read + Edit, **nunca reescribiendo el archivo
+entero** — perderías `enabledPlugins`, `extraKnownMarketplaces` u otros hooks
+de la casa (ej. los dos matchers de `PostToolUse` de pos-llantera). Algoritmo,
+en orden:
+
+1. **Sin `.claude/`**: creá el directorio y `settings.json` con solamente la
+   clave `hooks` (los dos bloques de abajo).
+2. **Con `settings.json` pero sin clave `hooks`**: agregá la clave `hooks` al
+   objeto raíz, sin tocar `enabledPlugins` ni `extraKnownMarketplaces`.
+3. **Detección de idempotencia**: buscá la subcadena `gate-session-status.sh`
+   y `gate-push-guard.sh` en el archivo ANTES de tocar nada. Si ya aparecen,
+   esa pieza ya está instalada — no agregues nada para ella.
+4. **`SessionStart` ya existe**: hacé *append* del bloque de abajo al array
+   existente. Nunca reemplaces el array.
+5. **`PreToolUse` ya existe**: si hay una entrada con `matcher` exactamente
+   `"Bash"`, agregá el hook al array `hooks` de **esa** entrada. Si no existe
+   una entrada `"Bash"`, agregá una entrada nueva completa. No toques la
+   entrada de `git-guard` (`Edit|Write|MultiEdit|NotebookEdit`) ni ningún
+   otro matcher preexistente.
+6. **Verificación post-merge, obligatoria**: confirmá que el archivo sigue
+   siendo JSON válido (`php -r 'json_decode(file_get_contents(".claude/settings.json")) !== null || exit(1);'`)
+   y revisá visualmente que las claves y hooks previos siguen presentes.
+
+Shape exacto a insertar (calcado de `git-guard`/`git-session-status`):
+
+```json
+"SessionStart": [
+  { "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/gate-session-status.sh\"" } ] }
+],
+"PreToolUse": [
+  { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/gate-push-guard.sh\"" } ] }
+]
+```
+
+`SessionStart` **no lleva `matcher`**. `PreToolUse` sí, y `"Bash"` es lo más
+fino que permite el campo — el filtrado por contenido (solo `git push`) va
+adentro del script, no acá.
 
 ## 3. Medir y congelar `.gate/baseline.json` (schema 1)
 

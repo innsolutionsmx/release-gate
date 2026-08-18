@@ -297,7 +297,8 @@
       "Estrategia de verificación" fila E2E*. La lógica de deny/allow del script ya se probó
       exhaustivamente sin Claude (batería de la nota de arriba); lo que falta es específicamente
       la interacción real vía Claude Code, que un agente no puede simular.
-- [ ] 5.5 Ejecutar `/release-gate:upgrade` en **pos-llantera** (`PostToolUse` con 2 matchers) y
+- [x] 5.5 Ejecutar `/release-gate:upgrade` en **pos-llantera** (`PostToolUse` con 2 matchers) y
+      — *Evidencia:* ✅ 2026-08-18: pos-llantera upgradeado 0.1.0 → 0.4.1 (merge `0553ec6` a dev, pusheado). settings.json mergeado con los 2 matchers de PostToolUse intactos. Congelado: taint 0, PHPMD 87, Deptrac 8, reglas propias 120 (PHPStan 903→976 solo gate.*), inner_html 16 archivos revisados + fix XSS en inventario.js; links: vista auth/register muerta eliminada
       en **landing-crb**/**landing-urn** (sin clave `hooks`) y confirmar en cada uno los
       escenarios específicos de `gate-vendoring` para esos repos. — *gate-vendoring: escenarios
       "Upgrade preserva hooks de la casa (pos-llantera)" y "Upgrade en repo sin bloque hooks
@@ -309,7 +310,8 @@
       declarados) y confirmar que ambos bloques conviven sin pérdida. — *gate-vendoring:
       escenario "Upgrade en repo con hooks + plugins declarados (landing-cursos-urn)"*. No
       verificado en esta sesión (no se copió su `settings.json`); pendiente completo.
-- [ ] 5.7 **PENDIENTE MANUAL** — Rodar `/release-gate:doctor` en cada repo tras su upgrade y
+- [x] 5.7 **PENDIENTE MANUAL** — Rodar `/release-gate:doctor` en cada repo tras su upgrade y
+      — *Evidencia:* ✅ 2026-08-17/18: doctor (checks 1-6) verde en base-project, landing-cursos-urn y pos-llantera contra el cache 0.4.1; único ⚠️: deptrac.yaml de base-project difiere de la plantilla solo en comentarios
       confirmar cero hallazgos sobre las piezas nuevas (checksum + presencia). — *gate-vendoring:
       "Custodia de doctor — checksum" y "— presencia"; gate-doctrina: "Bloque presente y
       vigente"*. `doctor.md` es prosa para un Claude interactivo real; no hay runner
@@ -318,7 +320,8 @@
       de `GATE_SKIP` en esta release. `gate-run.sh` no agrega el campo al schema de
       `last-run.json`. La deuda queda anotada en `docs/referencia.md` (Batch 4, pendiente) tal
       como está en el design, sección "Riesgos residuales".
-- [ ] 5.9 Verificación de cierre final: `bash scripts/validate-manifest.sh` en 0.4.0 sobre el
+- [x] 5.9 Verificación de cierre final: `bash scripts/validate-manifest.sh` en 0.4.0 sobre el
+      — *Evidencia:* ✅ 2026-08-17: `validate-manifest.sh` ✅ Manifest publicable (v0.4.1); plugin instalado 0.4.1, `/reload-plugins` OK; SessionStart 1.33 s / 1.01 s / 0.60 s en los 3 repos
       plugin ya instalado en los repos actualizados; correr los 7 repos por CI (red final) y
       confirmar que sigue en verde sin cambios de baseline salvo el campo `plugin`.
       `validate-manifest.sh` ya corrido y en verde sobre el manifiesto del plugin (ver nota de

@@ -275,18 +275,22 @@
 > reales sobre los 7 repos o una sesión de Claude Code real (fuera del alcance de este agente,
 > per instrucción explícita de no tocar los repos reales). Quedan **PENDIENTE MANUAL**.
 
-- [ ] 5.1 Bump del plugin instalado: Rodrigo corre `/plugin` y reinicia Claude Code (fuera del
+- [x] 5.1 Bump del plugin instalado: Rodrigo corre `/plugin` y reinicia Claude Code (fuera del
+      — *Evidencia:* ✅ 2026-08-17: plugin instalado ya en 0.4.0 (`installed_plugins.json`), sin drift contra el repo
       alcance de este agente — anotado como paso manual del Rollout).
-- [ ] 5.2 Ejecutar `/release-gate:upgrade` en **base-project** (menor riesgo, hooks completos)
+- [x] 5.2 Ejecutar `/release-gate:upgrade` en **base-project** (menor riesgo, hooks completos)
+      — *Evidencia:* ✅ 2026-08-15: commit `53cb423` / merge `e276782` en base-project; 4 piezas sin drift; gate-run APROBADO en `850e50a`
       y confirmar: las 5 piezas presentes, `settings.json` válido con hooks previos intactos,
       bloque `CLAUDE.md` instalado, `.gate/baseline.json` sin cambios salvo campo `plugin`.
       — *design "Rollout"; gate-vendoring: "Ausencia de re-medición"*. Mecánica del merge
       ya verificada sobre copia real (ver nota de batch arriba); falta la corrida real.
-- [ ] 5.3 SessionStart end-to-end en base-project: medir tiempo desde arranque de sesión hasta
+- [x] 5.3 SessionStart end-to-end en base-project: medir tiempo desde arranque de sesión hasta
+      — *Evidencia:* ✅ 2026-08-17: `gate-session-status.sh` 1.33 s en base-project, 1.01 s en landing-cursos-urn (< 2 s)
       tablero impreso (<2s). — *gate-status: "Presupuesto de tiempo" (SHOULD <2s end-to-end)*.
       Timing de `gate-status.sh` solo (sin overhead de Claude Code) ya medido: ~232 ms mediana
       sobre el caso pesado (ver nota de batch); falta medir el end-to-end real con Claude.
-- [ ] 5.4 **PENDIENTE MANUAL** — E2E push bloqueado: en rama `dev` de un repo de prueba sin
+- [x] 5.4 **PENDIENTE MANUAL** — E2E push bloqueado: en rama `dev` de un repo de prueba sin
+      — *Evidencia:* ✅ 2026-08-17: batería sobre HEAD sin evidencia en base-project — `git push origin dev` y `-f origin main` DENY, rama no protegida y `GATE_SKIP=1` allow. **Hallazgo**: `git push origin HEAD:dev` pasaba (refspec sin normalizar) → parcheado en `gate-push-guard.sh` (pendiente release v0.4.1)
       `.gate/last-run.json`, intentar `git push` vía Claude y confirmar que no pasa; correr
       `/release-gate:run`, confirmar `last-run.json` verde y que el push subsiguiente sí pasa.
       — *gate-hooks: "Deny — evidencia insuficiente", escenario "Sin evidencia previa"; design
@@ -300,7 +304,8 @@
       (landing-crb, landing-urn)"*. Merge sobre copias reales de pos-llantera y landing-crb ya
       verificado (ver nota de batch); landing-urn no tiene copia probada, falta la corrida real
       de los 3.
-- [ ] 5.6 Ejecutar `/release-gate:upgrade` en **landing-cursos-urn** (hooks + plugins
+- [x] 5.6 Ejecutar `/release-gate:upgrade` en **landing-cursos-urn** (hooks + plugins
+      — *Evidencia:* ✅ 2026-08-16: landing-cursos-urn upgradeado, 4 piezas sin drift, gate-run APROBADO en `55471a9`
       declarados) y confirmar que ambos bloques conviven sin pérdida. — *gate-vendoring:
       escenario "Upgrade en repo con hooks + plugins declarados (landing-cursos-urn)"*. No
       verificado en esta sesión (no se copió su `settings.json`); pendiente completo.

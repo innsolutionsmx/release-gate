@@ -76,6 +76,12 @@ for TOK in $RESTO; do
     esac
 done
 
+# Normalizar refspec: `+dev`, `HEAD:dev`, `dev:dev`, `refs/heads/dev` → `dev`.
+# Sin esto, `git push origin HEAD:dev` pasaba de largo (hueco detectado en E2E v0.4.0).
+RAMA="${RAMA#+}"
+RAMA="${RAMA##*:}"
+RAMA="${RAMA#refs/heads/}"
+
 if [ -z "$RAMA" ]; then
     RAMA=$(git branch --show-current 2>/dev/null || echo "")
 fi

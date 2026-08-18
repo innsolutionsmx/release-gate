@@ -262,7 +262,9 @@ comando no-push). Orden de descarte:
    presente en el comando → `exit 0` (ver override abajo).
 4. Sin `.gate/baseline.json` → `exit 0` (repo sin gate, nada que exigir).
 5. Resuelve la rama destino (refspec explícito del comando si está; si no,
-   la rama actual). Si no es `main` ni `dev` → `exit 0` (rama no protegida).
+   la rama actual). El refspec se normaliza: `+dev`, `HEAD:dev`, `dev:dev` y
+   `refs/heads/dev` cuentan como `dev`. Si no es `main` ni `dev` → `exit 0`
+   (rama no protegida).
 6. Lee `.gate/last-run.json`: si `veredicto == APROBADO`, `commit == HEAD`
    actual, y `arbol_limpio == true`, deja pasar. Si no, deniega con el motivo
    exacto (sin evidencia / bloqueado / commit viejo / árbol sucio) vía:
